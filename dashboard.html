@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard – Potensi PLTS Atap NTB</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body class="dash-page">
+<header id="hdr"><img src="images/logo.png" alt="IESR"><span class="vr"></span><h2>Pemetaan dan Analisis PLTS Atap NTB</h2></header>
+
+<nav id="nav">
+  <a href="index.html" title="WebGIS"><svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg><span>WebGIS</span></a>
+  <a href="dashboard.html" class="on" title="Dashboard"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Dashboard</span></a>
+</nav>
+
+<div id="load">Memuat data potensi…</div>
+
+<main class="dash">
+  <!-- Judul + Filter -->
+  <div class="top">
+    <div>
+      <h1>Dashboard <b>Potensi PLTS Atap NTB</b></h1>
+      <p class="sub">Ringkasan statistik potensi tiga sektor · baseline QGIS (tidak dikurangi bayangan)</p>
+    </div>
+    <div class="filters">
+      <div class="fg"><label for="f-kab">Kabupaten/Kota</label><select id="f-kab" class="fsel"><option value="ALL">All</option></select></div>
+      <div class="fg"><label>Sektor</label><div class="seg" id="f-sec"></div></div>
+      <div class="fg"><label>Parameter</label><div class="seg blue" id="f-par"></div></div>
+      <div class="fg"><label>&nbsp;</label><div class="seg"><button id="f-rst" title="Kembalikan semua filter">Reset</button></div></div>
+    </div>
+  </div>
+
+  <!-- KPI -->
+  <section class="grid kpis">
+    <div class="kpi hl"><div class="lb"><i></i>Total Potensi Kapasitas</div><div class="v" id="k-cap">–</div><div class="ft" id="k-cap-f">–</div></div>
+    <div class="kpi"><div class="lb"><i></i>Total Estimasi Energi</div><div class="v" id="k-en">–</div><div class="ft" id="k-en-f">–</div></div>
+    <div class="kpi"><div class="lb"><i></i>Total Effective Roof Area</div><div class="v" id="k-area">–</div><div class="ft" id="k-area-f">–</div></div>
+    <div class="kpi"><div class="lb"><i></i>Total Target Building</div><div class="v" id="k-n">–</div><div class="ft" id="k-n-f">–</div></div>
+    <div class="kpi"><div class="lb"><i></i>Total Kabupaten/Kota</div><div class="v" id="k-kab">–</div><div class="ft" id="k-kab-f">–</div></div>
+  </section>
+
+  <!-- Sektor: bar + donut -->
+  <section class="grid r2">
+    <div class="card">
+      <div class="ch"><h2>Potensi PLTS Atap Berdasarkan Sektor<span class="hint" id="h-sec">–</span></h2><div class="seg sm" id="t-sec"></div></div>
+      <div class="hb big" id="c-sec"></div>
+    </div>
+    <div class="card">
+      <div class="ch"><h2>Komposisi Potensi Berdasarkan Sektor<span class="hint" id="h-dn">–</span></h2><div class="seg sm" id="t-dn"></div></div>
+      <div class="dn">
+        <div class="donut"><svg viewBox="0 0 200 200" id="dn"></svg><div class="c"><b id="dn-v">–</b><span id="dn-u">–</span><em id="dn-s"></em></div></div>
+        <div class="lg" id="dn-lg"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Kab/Kota + ringkasan -->
+  <section class="grid r3">
+    <div class="card">
+      <div class="ch"><h2>Potensi PLTS Atap Berdasarkan Kabupaten/Kota<span class="hint" id="h-kab">–</span></h2><div class="seg sm" id="t-kab"></div></div>
+      <div class="hb" id="c-kab"></div>
+    </div>
+    <div class="grid" style="align-content:start">
+      <div class="card">
+        <div class="ch"><h2>Ringkasan per Sektor<span class="hint" id="h-tbl">–</span></h2></div>
+        <div class="tw" id="t-sum"></div>
+      </div>
+      <div class="card">
+        <div class="ch"><h2>Klasifikasi Dampak Bayangan<span class="hint">Referensi analisis Solar Shadow di WebGIS</span></h2></div>
+        <div class="pars"><span>Shadowed Area</span><span>Unshaded Area</span><span>Shadow Coverage (%)</span><span>Impact Classification</span></div>
+        <div class="imp" id="imp"></div>
+        <div class="note">Shadow hanya menunjukkan kondisi spasial/coverage atap yang terdampak. Nilai MWp dan MWh pada dashboard ini adalah baseline QGIS dan tidak dikurangi oleh bayangan.</div>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot" id="foot"></p>
+</main>
+
+<script>
+/* ---------------- Sumber data ---------------- */
+const BLD_SRC = { IND: 'data/Industrial Sector.geojson', KOM: 'data/Commercial Sector.geojson', SOC: 'data/Socio-Government Sector.geojson' };   // DATA UTAMA (per bangunan)
+const AGG_SRC = { IND: 'data/Total Sektor Industri.geojson', KOM: 'data/Total Sektor Komersial.geojson', SOC: 'data/Total Sektor Socio-Government.geojson' }; // agregasi Kab/Kota (dipakai apa adanya)
+const SECS = ['IND', 'KOM', 'SOC'];
+const SEC = { IND: { name: 'Industrial', color: '#1f4fff' }, KOM: { name: 'Commercial', color: '#8aa3ff' }, SOC: { name: 'Socio-Government', color: '#c4c4c8' } };
+const MET = {
+  cap:  { short: 'MWp',       name: 'Kapasitas',     unit: 'MWp',       d: 2, bf: 'Capacity',           af: 'Total Kapasitas' },
+  en:   { short: 'MWh',       name: 'Energi',        unit: 'MWh/tahun', d: 0, bf: 'Energy',             af: 'Total Energi' },
+  area: { short: 'Luas Atap', name: 'Luas Atap Efektif', unit: 'm²',    d: 0, bf: 'Luas Atap Efektif',  af: 'Total Luas Atap Efektif' }
+};
+const IMPACT = [
+  { label: 'Tidak terdampak', rng: '0%',      color: '#2ecc71' },
+  { label: 'Dampak rendah',   rng: '>0–10%',  color: '#f1c40f' },
+  { label: 'Dampak sedang',   rng: '>10–25%', color: '#fb8500' },
+  { label: 'Dampak tinggi',   rng: '>25–50%', color: '#e63946' },
+  { label: 'Dampak sangat tinggi', rng: '>50%', color: '#7b1e3a' }
+];
+const $ = id => document.getElementById(id);
+const nf = (v, d = 2) => (+v).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: d });
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const kabLabel = (n, t) => t === 'Kota' && !/^Kota/.test(n) ? 'Kota ' + n : t === 'Kabupaten' ? 'Kab. ' + n : n;
+
+/* ---------------- State ---------------- */
+const S = { kab: 'ALL', sec: 'ALL', pm: { sec: 'cap', dn: 'cap', kab: 'cap' } };
+let AGG = {};            // AGG[kab] = { label, IND:{props}, KOM:{..}, SOC:{..} }
+let BTOT = {};           // BTOT[sec] = { n, cap, en, area }  → jumlah nilai asli GeoJSON sektor
+
+/* ---------------- Akses nilai ---------------- */
+const selSecs = () => S.sec === 'ALL' ? SECS : [S.sec];
+const secVal = (sec, m, kab = S.kab) => kab === 'ALL' ? (BTOT[sec]?.[m] || 0) : (+(AGG[kab]?.[sec]?.[MET[m].af]) || 0);
+const secN = (sec, kab = S.kab) => kab === 'ALL' ? (BTOT[sec]?.n || 0) : (+(AGG[kab]?.[sec]?.['Jumlah Objek']) || 0);
+const kabVal = (kab, m) => selSecs().reduce((s, k) => s + (+(AGG[kab]?.[k]?.[MET[m].af]) || 0), 0);   // langsung dari agregasi
+const sumSecs = (m, kab = S.kab) => selSecs().reduce((s, k) => s + secVal(k, m, kab), 0);
+
+/* ---------------- Komponen UI ---------------- */
+function seg(el, items, cur, on) {
+  el.innerHTML = items.map(([k, l]) => `<button data-k="${k}" class="${k === cur ? 'on' : ''}">${l}</button>`).join('');
+  el.onclick = e => { const b = e.target.closest('button'); if (b) on(b.dataset.k); };
+}
+const metItems = Object.entries(MET).map(([k, m]) => [k, m.short]);
+const ctxText = () => `${S.kab === 'ALL' ? 'Seluruh NTB' : AGG[S.kab].label} · ${S.sec === 'ALL' ? 'Semua sektor' : SEC[S.sec].name}`;
+
+function hbars(el, rows, m) {   // rows: [{key,label,v,cls}]
+  const mx = Math.max(...rows.map(r => r.v), 0) || 1, mt = MET[m];
+  el.innerHTML = rows.map((r, i) => `<div class="hr ${r.cls || ''}" data-k="${r.key}"><span class="nm">${r.no ? `<span class="no">${String(i + 1).padStart(2, '0')}</span>` : ''}${esc(r.label)}</span><div class="tr"><i style="width:${r.v / mx * 100}%"></i></div><span class="val">${r.v > 0 ? nf(r.v, mt.d) : '–'}<small>${r.v > 0 ? mt.short === 'Luas Atap' ? 'm²' : mt.short : ''}</small></span></div>`).join('');
+}
+
+/* ---------------- Render: KPI ---------------- */
+function kpis() {
+  const cap = sumSecs('cap'), en = sumSecs('en'), ar = sumSecs('area'), n = selSecs().reduce((s, k) => s + secN(k), 0);
+  const ctx = ctxText();
+  $('k-cap').innerHTML = nf(cap, 2) + '<small>MWp</small>';       $('k-cap-f').textContent = ctx;
+  $('k-en').innerHTML = nf(en, 0) + '<small>MWh/tahun</small>';   $('k-en-f').textContent = ctx;
+  $('k-area').innerHTML = nf(ar, 0) + '<small>m²</small>';        $('k-area-f').textContent = '≈ ' + nf(ar / 10000, 2) + ' hektare · ' + (S.kab === 'ALL' ? 'NTB' : AGG[S.kab].label);
+  $('k-n').innerHTML = nf(n, 0) + '<small>building</small>';      $('k-n-f').textContent = ctx;
+  const nk = S.kab === 'ALL' ? Object.keys(AGG).length : 1;
+  $('k-kab').innerHTML = nf(nk, 0) + '<small>kabupaten/kota</small>';
+  $('k-kab-f').textContent = S.kab === 'ALL' ? 'Cakupan seluruh wilayah studi NTB' : AGG[S.kab].label + ' (dari ' + Object.keys(AGG).length + ' kab/kota)';
+}
+
+/* ---------------- Render: sektor bar ---------------- */
+function secChart() {
+  const m = S.pm.sec;
+  const rows = SECS.map(k => ({ key: k, label: SEC[k].name, v: secVal(k, m), cls: S.sec === 'ALL' ? '' : S.sec === k ? 'sel' : 'dim' }));
+  if (S.sec === 'ALL') { const t = rows.reduce((a, b) => b.v > a.v ? b : a, rows[0]); t.cls = 'top1'; }
+  $('h-sec').textContent = `${S.kab === 'ALL' ? 'Seluruh NTB' : AGG[S.kab].label} · ${MET[m].name} (${MET[m].unit})`;
+  hbars($('c-sec'), rows, m);
+  $('c-sec').onclick = e => { const r = e.target.closest('.hr'); if (r) setSec(S.sec === r.dataset.k ? 'ALL' : r.dataset.k); };
+}
+
+/* ---------------- Render: donut ---------------- */
+function donut() {
+  const m = S.pm.dn, mt = MET[m], vs = SECS.map(k => secVal(k, m)), T = vs.reduce((a, b) => b + a, 0) || 1;
+  const R = 70, W = 28, C = 2 * Math.PI * R; let off = 0;
+  $('dn').innerHTML = `<circle cx="100" cy="100" r="${R}" fill="none" stroke="#e7e6e2" stroke-width="${W}"/>` + SECS.map((k, i) => {
+    const len = vs[i] / T * C, dim = S.sec !== 'ALL' && S.sec !== k;
+    const s = `<circle class="sg" data-k="${k}" cx="100" cy="100" r="${R}" fill="none" stroke="${SEC[k].color}" stroke-width="${W}" stroke-dasharray="${Math.max(len - 2.5, 0)} ${C}" stroke-dashoffset="${-off}" opacity="${dim ? .22 : 1}"/>`;
+    off += len; return s;
+  }).join('');
+  $('dn').onclick = e => { const c = e.target.closest('.sg'); if (c) setSec(S.sec === c.dataset.k ? 'ALL' : c.dataset.k); };
+  const sel = selSecs().reduce((s, k) => s + vs[SECS.indexOf(k)], 0);
+  $('dn-v').textContent = nf(sel, mt.d);
+  $('dn-u').textContent = mt.unit;
+  $('dn-s').textContent = S.sec === 'ALL' ? 'total 3 sektor' : nf(sel / T * 100, 1) + '% dari total';
+  $('h-dn').textContent = `${S.kab === 'ALL' ? 'Seluruh NTB' : AGG[S.kab].label} · ${mt.name}`;
+  $('dn-lg').innerHTML = SECS.map((k, i) => `<div class="it ${S.sec !== 'ALL' && S.sec !== k ? 'dim' : ''}" data-k="${k}"><i style="background:${SEC[k].color}"></i><span>${SEC[k].name}<em>${nf(vs[i], mt.d)} ${mt.unit}</em></span><b>${nf(vs[i] / T * 100, 1)}%</b></div>`).join('');
+  $('dn-lg').onclick = e => { const r = e.target.closest('.it'); if (r) setSec(S.sec === r.dataset.k ? 'ALL' : r.dataset.k); };
+}
+
+/* ---------------- Render: Kab/Kota ---------------- */
+function kabChart() {
+  const m = S.pm.kab;
+  const rows = Object.keys(AGG).map(k => ({ key: k, label: AGG[k].label, v: kabVal(k, m) })).sort((a, b) => b.v - a.v);
+  rows.forEach((r, i) => { r.no = 1; r.cls = S.kab === 'ALL' ? (i === 0 ? 'top1' : '') : S.kab === r.key ? 'sel' : 'dim'; });
+  $('h-kab').textContent = `${S.sec === 'ALL' ? 'Semua sektor' : SEC[S.sec].name} · ${MET[m].name} (${MET[m].unit}) · nilai agregasi QGIS`;
+  hbars($('c-kab'), rows, m);
+  $('c-kab').onclick = e => { const r = e.target.closest('.hr'); if (r) setKab(S.kab === r.dataset.k ? 'ALL' : r.dataset.k); };
+}
+
+/* ---------------- Render: tabel ringkasan ---------------- */
+function sumTable() {
+  const cols = ['n', 'area', 'cap', 'en'];
+  const val = (k, c) => c === 'n' ? secN(k) : secVal(k, c);
+  const rows = SECS.map(k => `<tr class="${S.sec !== 'ALL' && S.sec !== k ? 'dim' : ''}"><td><span class="dot" style="background:${SEC[k].color}"></span>${SEC[k].name}</td>${cols.map(c => `<td>${nf(val(k, c), c === 'cap' ? 2 : 0)}</td>`).join('')}</tr>`);
+  rows.push(`<tr class="tt"><td>${S.sec === 'ALL' ? 'Total' : 'Terpilih'}</td>${cols.map(c => `<td>${nf(selSecs().reduce((s, k) => s + val(k, c), 0), c === 'cap' ? 2 : 0)}</td>`).join('')}</tr>`);
+  $('t-sum').innerHTML = `<table><thead><tr><th>Sektor</th><th>Building</th><th>Atap Efektif (m²)</th><th>MWp</th><th>MWh/thn</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+  $('h-tbl').textContent = S.kab === 'ALL' ? 'Seluruh NTB' : AGG[S.kab].label;
+}
+
+/* ---------------- Render: legenda dampak ---------------- */
+function impact() {
+  $('imp').innerHTML = IMPACT.map(c => `<div class="rw"><i style="background:${c.color}"></i><span>${c.label}</span><b>${c.rng}</b></div>`).join('');
+}
+
+/* ---------------- Sinkron filter ---------------- */
+function syncControls() {
+  $('f-kab').value = S.kab;
+  seg($('f-sec'), [['ALL', 'All'], ['IND', 'Industrial'], ['KOM', 'Commercial'], ['SOC', 'Socio-Government']], S.sec, setSec);
+  const all = Object.values(S.pm).every(v => v === S.pm.sec) ? S.pm.sec : null;
+  seg($('f-par'), metItems, all, setGlobalPar);
+  seg($('t-sec'), metItems, S.pm.sec, k => { S.pm.sec = k; render(); });
+  seg($('t-dn'), metItems, S.pm.dn, k => { S.pm.dn = k; render(); });
+  seg($('t-kab'), metItems, S.pm.kab, k => { S.pm.kab = k; render(); });
+}
+function render() { syncControls(); kpis(); secChart(); donut(); kabChart(); sumTable(); }
+const setKab = k => { S.kab = k; render(); };
+const setSec = k => { S.sec = k; render(); };
+const setGlobalPar = k => { Object.keys(S.pm).forEach(p => S.pm[p] = k); render(); };
+
+/* ---------------- Muat data ---------------- */
+(async () => {
+  try {
+    const get = async u => (await fetch(encodeURI(u))).json();
+    const [bl, ag] = await Promise.all([
+      Promise.all(SECS.map(async k => [k, await get(BLD_SRC[k])])),
+      Promise.all(SECS.map(async k => [k, await get(AGG_SRC[k])]))
+    ]);
+    // agregasi Kab/Kota – dipakai langsung
+    ag.forEach(([sec, fc]) => fc.features.forEach(f => {
+      const p = f.properties, n = p.NAME_2; AGG[n] = AGG[n] || { name: n, label: kabLabel(n, p.TYPE_2) }; AGG[n][sec] = p;
+    }));
+    // data utama sektor – nilai asli per bangunan
+    bl.forEach(([sec, fc]) => {
+      const t = { n: 0, cap: 0, en: 0, area: 0 };
+      fc.features.forEach(f => { const p = f.properties; t.n++; t.cap += +p.Capacity || 0; t.en += +p.Energy || 0; t.area += +p['Luas Atap Efektif'] || 0; });
+      BTOT[sec] = t;
+    });
+    // opsi filter Kab/Kota
+    $('f-kab').innerHTML = '<option value="ALL">All</option>' + Object.keys(AGG).sort((a, b) => AGG[a].label.localeCompare(AGG[b].label, 'id')).map(k => `<option value="${esc(k)}">${esc(AGG[k].label)}</option>`).join('');
+    $('f-kab').onchange = e => setKab(e.target.value);
+    $('f-rst').onclick = () => { S.kab = 'ALL'; S.sec = 'ALL'; Object.keys(S.pm).forEach(p => S.pm[p] = 'cap'); render(); };
+    impact();
+    // catatan selisih sumber (dinamis)
+    const diff = SECS.filter(k => Object.keys(AGG).reduce((s, n) => s + (+(AGG[n][k]?.['Jumlah Objek']) || 0), 0) !== BTOT[k].n)
+      .map(k => `${SEC[k].name}: ${nf(BTOT[k].n, 0)} building pada GeoJSON sektor vs ${nf(Object.keys(AGG).reduce((s, n) => s + (+(AGG[n][k]['Jumlah Objek']) || 0), 0), 0)} objek pada agregasi Kab/Kota`);
+    $('foot').innerHTML = 'Sumber: GeoJSON sektor Industrial, Commercial, Socio-Government (data utama potensi) dan Agregasi Kab/Kota NTB hasil QGIS. Nilai ditampilkan apa adanya; MWp dan MWh tidak dikurangi bayangan. Filter “All” memakai total GeoJSON sektor, filter Kab/Kota memakai nilai agregasi.' +
+      (diff.length ? '<br>Catatan selisih sumber – ' + diff.join('; ') + '.' : '');
+    render();
+    $('load').style.opacity = 0; setTimeout(() => $('load').remove(), 300);
+  } catch (e) { $('load').innerHTML = 'Gagal memuat data: ' + esc(e.message) + '<br>Jalankan lewat server lokal (mis. <code>python -m http.server</code>)'; }
+})();
+</script>
+</body>
+</html>

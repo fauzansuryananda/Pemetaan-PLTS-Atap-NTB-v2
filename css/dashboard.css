@@ -1,0 +1,152 @@
+/* =====================================================================
+   DASHBOARD – tema terang (referensi AgentOps Overview Panel)
+   Semua aturan dibatasi ke body.dash-page agar halaman peta tidak terpengaruh.
+   ===================================================================== */
+body.dash-page{
+  --cv:#ebeae7;          /* kanvas */
+  --cd:#f7f6f4;          /* kartu */
+  --cd2:#efeeeb;         /* kartu dalam / track */
+  --bd:#e2e0dc;          /* garis */
+  --ink:#121214;
+  --ink2:#6f6f76;
+  --ink3:#a3a3a9;
+  --bl:#1f4fff;          /* biru aksen */
+  --bl2:#8aa3ff;         /* biru muda */
+  --bl3:#c9d2f5;
+  --gy:#c4c4c8;
+  --sans:'Inter Tight','Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono','IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  background:var(--cv);color:var(--ink);font-family:var(--sans);overflow:auto;
+}
+body.dash-page *{scrollbar-color:#cfcdc8 transparent}
+body.dash-page ::selection{background:var(--bl);color:#fff}
+
+/* ----- header & rail ----- */
+body.dash-page #hdr{background:var(--cd);border-bottom:1px solid var(--bd)}
+body.dash-page #hdr .vr{background:var(--bd)}
+body.dash-page #hdr h2{font:600 15px var(--sans);letter-spacing:-.01em;color:var(--ink)}
+body.dash-page #nav{background:var(--cd);border-right:1px solid var(--bd)}
+body.dash-page #nav a{color:var(--ink2);border-radius:12px}
+body.dash-page #nav a:hover{background:var(--cd2);color:var(--ink)}
+body.dash-page #nav a.on{background:var(--bl);color:#fff;box-shadow:0 6px 16px rgba(31,79,255,.28)}
+body.dash-page #nav a span{background:var(--ink);color:#fff;border:0;font-family:var(--sans)}
+
+/* ----- layout ----- */
+body.dash-page .dash{margin-left:var(--rail);width:calc(100% - var(--rail));min-height:100vh;padding:calc(var(--hdr) + 18px) 22px 30px;display:flex;flex-direction:column;gap:14px}
+body.dash-page .grid{display:grid;gap:14px}
+body.dash-page .card{background:var(--cd);border:1px solid var(--bd);border-radius:18px;padding:18px 20px;min-width:0}
+body.dash-page .card>h2,body.dash-page .ch{margin:0 0 14px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+body.dash-page .ch h2{margin:0;font:500 14px/1.3 var(--sans);color:var(--ink);letter-spacing:-.005em}
+body.dash-page .ch h2 em{font-style:normal;color:var(--ink3);font-weight:400}
+body.dash-page .ch .hint{display:block;font:400 11px var(--sans);color:var(--ink2);margin-top:3px}
+
+/* ----- top bar + filter ----- */
+body.dash-page .top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+body.dash-page .top h1{font:500 26px/1.1 var(--sans);letter-spacing:-.025em;color:var(--ink);margin:0}
+body.dash-page .top h1 b{color:var(--ink3);font-weight:400}
+body.dash-page .top .sub{font-size:12px;color:var(--ink2);margin:6px 0 0}
+body.dash-page .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;background:var(--cd);border:1px solid var(--bd);border-radius:16px;padding:8px}
+body.dash-page .fg{display:flex;flex-direction:column;gap:4px;padding:2px 8px 2px 10px;border-right:1px solid var(--bd);min-width:0}
+body.dash-page .fg:last-child{border-right:0;padding-right:4px}
+body.dash-page .fg>label{font:500 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+body.dash-page .fsel{appearance:none;-webkit-appearance:none;font:500 13px var(--sans);color:var(--ink);background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%236f6f76' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='m1 1 4 4 4-4'/%3E%3C/svg%3E") no-repeat right 11px center;border:1px solid var(--bd);border-radius:10px;padding:7px 30px 7px 12px;min-width:170px;cursor:pointer}
+body.dash-page .fsel:hover,body.dash-page .fsel:focus{border-color:var(--bl);outline:0}
+body.dash-page .seg{display:inline-flex;gap:2px;padding:3px;background:var(--cd2);border:1px solid var(--bd);border-radius:11px}
+body.dash-page .seg button{border:0;background:transparent;color:var(--ink2);font:500 12px var(--sans);padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;transition:.15s}
+body.dash-page .seg button:hover:not(.on){color:var(--ink)}
+body.dash-page .seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 1px var(--bd)}
+body.dash-page .seg.sm button{padding:4px 10px;font-size:11px}
+body.dash-page .seg.blue button.on{background:var(--bl);color:#fff;box-shadow:none}
+
+/* ----- KPI ----- */
+body.dash-page .kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
+body.dash-page .kpi{background:var(--cd);border:1px solid var(--bd);border-radius:18px;padding:16px 18px 15px;display:flex;flex-direction:column;gap:2px;min-width:0;position:relative;overflow:hidden}
+body.dash-page .kpi .lb{font:500 12px var(--sans);color:var(--ink2);display:flex;align-items:center;gap:7px}
+body.dash-page .kpi .lb i{width:7px;height:7px;border-radius:50%;background:var(--gy);flex:none}
+body.dash-page .kpi .v{font:300 clamp(26px,2.1vw,36px)/1.1 var(--sans);letter-spacing:-.035em;margin:12px 0 0;white-space:nowrap;color:var(--ink)}
+body.dash-page .kpi .v small{font-size:.42em;color:var(--ink3);font-weight:400;margin-left:5px;letter-spacing:0}
+body.dash-page .kpi .ft{font:400 11px var(--sans);color:var(--ink2);margin-top:8px}
+body.dash-page .kpi.hl{background:var(--bl);border-color:var(--bl);color:#fff}
+body.dash-page .kpi.hl .lb{color:rgba(255,255,255,.78)}
+body.dash-page .kpi.hl .lb i{background:#fff}
+body.dash-page .kpi.hl .v,body.dash-page .kpi.hl .v small{color:#fff}
+body.dash-page .kpi.hl .v small{opacity:.7}
+body.dash-page .kpi.hl .ft{color:rgba(255,255,255,.75)}
+
+/* ----- grid rows ----- */
+body.dash-page .r2{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}
+body.dash-page .r3{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr)}
+
+/* ----- horizontal bar rows ----- */
+body.dash-page .hb{display:flex;flex-direction:column;gap:6px}
+body.dash-page .hr{display:grid;grid-template-columns:172px minmax(0,1fr) 112px;gap:12px;align-items:center;padding:6px 8px;border-radius:10px;cursor:pointer;transition:background .15s,opacity .25s}
+body.dash-page .hr:hover{background:var(--cd2)}
+body.dash-page .hr .nm{font:400 12.5px var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px}
+body.dash-page .hr .nm .no{font:500 10px var(--mono);color:var(--ink3);width:16px;flex:none}
+body.dash-page .hr .tr{height:20px;background:var(--cd2);border-radius:7px;overflow:hidden;position:relative}
+body.dash-page .hr .tr i{position:absolute;left:0;top:0;bottom:0;border-radius:7px;background:#dcdcdf;transition:width .5s cubic-bezier(.2,.8,.2,1),background .2s}
+body.dash-page .hr.top1 .tr i,body.dash-page .hr.sel .tr i{background:var(--bl)}
+body.dash-page .hr.dim{opacity:.38}
+body.dash-page .hr .val{font:400 13px var(--sans);text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+body.dash-page .hr .val small{color:var(--ink3);font-size:10px;margin-left:3px}
+body.dash-page .hb.big .hr{grid-template-columns:132px minmax(0,1fr) 104px;padding:11px 8px}
+body.dash-page .hb.big .hr .tr{height:34px;border-radius:9px}
+body.dash-page .hb.big .hr .tr i{border-radius:9px}
+body.dash-page .hb.big .hr .nm{font-size:13px}
+body.dash-page .empty{padding:26px 8px;text-align:center;color:var(--ink3);font-size:12px}
+
+/* ----- donut ----- */
+body.dash-page .dn{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+body.dash-page .donut{position:relative;width:216px;height:216px;flex:none}
+body.dash-page .donut svg{width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
+body.dash-page .donut circle.sg{transition:stroke-dasharray .5s,stroke-dashoffset .5s,opacity .25s;cursor:pointer}
+body.dash-page .donut .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
+body.dash-page .donut .c b{font:300 34px/1 var(--sans);letter-spacing:-.04em}
+body.dash-page .donut .c span{font:500 10px var(--mono);color:var(--ink2);letter-spacing:.08em;margin-top:6px;text-transform:uppercase}
+body.dash-page .donut .c em{font:400 11px var(--sans);font-style:normal;color:var(--ink3);margin-top:3px}
+body.dash-page .lg{flex:1;min-width:200px;display:flex;flex-direction:column}
+body.dash-page .lg .it{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:11px;align-items:center;padding:11px 8px;border-bottom:1px solid var(--bd);cursor:pointer;border-radius:8px;transition:opacity .25s,background .15s}
+body.dash-page .lg .it:last-child{border-bottom:0}
+body.dash-page .lg .it:hover{background:var(--cd2)}
+body.dash-page .lg .it.dim{opacity:.38}
+body.dash-page .lg .it i{width:12px;height:12px;border-radius:4px;display:block}
+body.dash-page .lg .it span{font-size:12.5px;color:var(--ink);line-height:1.3}
+body.dash-page .lg .it span em{display:block;font:400 11px var(--sans);font-style:normal;color:var(--ink2);margin-top:2px}
+body.dash-page .lg .it b{font:400 18px var(--sans);letter-spacing:-.02em}
+
+/* ----- tabel ----- */
+body.dash-page .tw{overflow-x:auto}
+body.dash-page table{width:100%;border-collapse:collapse;font-size:12px}
+body.dash-page th{font:500 10px var(--mono);letter-spacing:.07em;color:var(--ink3);text-align:right;padding:6px 8px 9px;border-bottom:1px solid var(--bd);text-transform:uppercase;white-space:nowrap}
+body.dash-page td{padding:11px 8px;text-align:right;border-bottom:1px solid var(--bd);font:400 12.5px var(--sans);font-variant-numeric:tabular-nums;white-space:nowrap}
+body.dash-page tr:last-child td{border-bottom:0}
+body.dash-page th:first-child,body.dash-page td:first-child{text-align:left}
+body.dash-page td .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:9px;vertical-align:baseline}
+body.dash-page tr.tt td{font-weight:600;border-top:1px solid var(--ink);color:var(--ink)}
+body.dash-page tr.dim td{opacity:.4}
+body.dash-page td.tl{text-align:left;white-space:normal;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+body.dash-page td.tl small{display:block;color:var(--ink3);font:400 10px var(--mono);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.dash-page td.tg,body.dash-page th.tg{text-align:left}
+body.dash-page .tag{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:99px;background:#fff;border:1px solid var(--bd);font:500 11px var(--sans)}
+body.dash-page .tag i{width:7px;height:7px;border-radius:50%}
+body.dash-page td.hi{color:var(--bl);font-weight:600}
+
+/* ----- klasifikasi dampak bayangan ----- */
+body.dash-page .imp{display:flex;flex-direction:column}
+body.dash-page .imp .rw{display:grid;grid-template-columns:14px 1fr auto;gap:11px;align-items:center;padding:9px 0;border-bottom:1px solid var(--bd);font-size:12.5px}
+body.dash-page .imp .rw:last-of-type{border-bottom:0}
+body.dash-page .imp .rw i{width:12px;height:12px;border-radius:4px}
+body.dash-page .imp .rw b{font:500 11px var(--mono);color:var(--ink2)}
+body.dash-page .note{font:400 11px/1.55 var(--sans);color:var(--ink2);margin-top:12px;padding:10px 12px;background:var(--cd2);border-radius:10px}
+body.dash-page .pars{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+body.dash-page .pars span{font:500 11px var(--sans);padding:3px 10px;border-radius:99px;border:1px solid var(--bd);background:#fff;color:var(--ink2)}
+
+body.dash-page .foot{margin:2px 2px 0;color:var(--ink3);font-size:11px;line-height:1.6}
+body.dash-page #load{position:fixed;inset:var(--hdr) 0 0 var(--rail);display:flex;align-items:center;justify-content:center;background:var(--cv);z-index:10;font:12px var(--mono);color:var(--ink2);transition:opacity .3s}
+
+@media(max-width:1280px){body.dash-page .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1100px){body.dash-page .r2,body.dash-page .r3{grid-template-columns:1fr}body.dash-page .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){body.dash-page .kpis{grid-template-columns:1fr}body.dash-page .dash{padding:calc(var(--hdr) + 12px) 12px 22px}
+  body.dash-page .hr,body.dash-page .hb.big .hr{grid-template-columns:96px minmax(0,1fr) 84px;gap:8px}
+  body.dash-page .filters{width:100%}body.dash-page .fg{border-right:0;width:100%}body.dash-page .fsel{width:100%}
+  body.dash-page .seg{flex-wrap:wrap}body.dash-page .top h1{font-size:21px}}
