@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Potensi PLTS Atap di NTB – Solar Shadow 3D</title>
+<link href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/dashboard.css">
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="https://unpkg.com/pmtiles@3.2.1/dist/pmtiles.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
+<link rel="stylesheet" href="css/theme.css">
+<style>
+/* Sun Path overlay (visual peta, tidak diubah) */
+#spOv{position:absolute;inset:0;pointer-events:none;z-index:1;overflow:hidden}
+#spOv svg{position:absolute;inset:0;width:100%;height:100%}
+.spb{position:absolute;transform:translate(-50%,-50%);border-radius:50%;display:none;flex-direction:column;align-items:center;justify-content:center;color:#1b2330;text-align:center;line-height:1.05}
+.spb b{font-size:11px}.spb small{font-size:7.5px;font-weight:700;opacity:.75}
+.spb.rs{width:42px;height:42px;background:#ffe45c;border:1px solid #fff;box-shadow:0 0 12px 3px rgba(255,214,10,.6)}
+.spb.sun{width:54px;height:54px;background:radial-gradient(circle,#fffbc2 0%,#ffe45c 55%,#ffd60a 100%);box-shadow:0 0 18px 8px rgba(255,214,10,.65),0 0 48px 20px rgba(255,214,10,.35)}
+.spb.sun b{font-size:14px}
+</style>
+</head>
+<body class="map-page">
+<header id="hdr"><img src="images/logo.png" alt="IESR"><span class="vr"></span><h2>Pemetaan dan Analisis PLTS Atap NTB</h2></header>
+<nav id="nav">
+  <a href="index.html" class="on" title="WebGIS"><svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg><span>WebGIS</span></a>
+  <a href="dashboard.html" title="Dashboard"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Dashboard KPI</span></a>
+</nav>
+<div id="map"></div>
+
+<aside id="kiri" class="panel">
+  <h1>WebGIS <b>/ PLTS Atap NTB</b></h1>
+  <p class="sub">Baseline QGIS · Overture 3D · MapLibre GL</p>
+  <div id="lyr"></div>
+
+  <h3>AGREGASI KAB/KOTA – TAMPILAN</h3>
+  <select id="agg-s" class="full"></select>
+  <select id="agg-m" class="full">
+    <option value="Total Kapasitas">Total Kapasitas (MWp)</option>
+    <option value="Total Energi">Total Energi (MWh)</option>
+    <option value="EXIST">PLTS Terpasang / Eksisting (MWp)</option>
+    <option value="NET">Potensi Net (MWp)</option>
+  </select>
+  <div id="agg-lg" style="margin-top:6px"></div>
+
+  <h3>TERRAIN</h3>
+  <label class="o"><input type="checkbox" id="c-ter" checked>Terrain 3D + hillshade</label>
+
+  <h3>LOKASI</h3>
+  <select id="lok" class="full">
+    <option value="117.0,-8.65,7.9,0">NTB (overview)</option>
+    <option value="116.1165,-8.5833,16.3,60">Mataram</option>
+    <option value="116.0400,-8.4963,16,60">Senggigi</option>
+    <option value="116.2775,-8.8947,16,60">Kuta – Mandalika</option>
+    <option value="117.4198,-8.4930,16,60">Sumbawa Besar</option>
+    <option value="118.7270,-8.4600,16,60">Bima</option>
+    <option value="116.4573,-8.4118,12,72">G. Rinjani (terrain)</option>
+  </select>
+
+  <h3>KLASIFIKASI DAMPAK BAYANGAN</h3>
+  <div id="imp-lg"></div>
+  <div class="note">Warna atap bangunan (Industrial/Commercial/Socio-Government) mengikuti kelas dampak setelah analisis. Nilai baseline MWp/MWh tidak berubah.</div>
+</aside>
+
+<button id="bkKanan" title="Tampilkan panel analisis bayangan">Analisis Bayangan</button>
+<aside id="kanan" class="panel">
+  <div class="ph"><span>ANALISIS BAYANGAN</span><button id="tutupKanan" title="Sembunyikan panel">✕</button></div>
+  <div id="wkt">12:00<small>WIB</small></div>
+  <div id="sun"></div>
+  <div id="sunv"><div>Solar Azimuth<b id="v-az">–</b></div><div>Solar Elevation<b id="v-el">–</b></div></div>
+
+  <label class="t">TANGGAL</label><input type="date" id="tgl">
+  <label class="t">KEKUATAN BAYANGAN</label><input type="range" id="opa" min="0.2" max="0.9" step="0.05" value="0.5">
+
+  <!-- 1. SIMULASI WAKTU (jam tertentu / 24 jam) -->
+  <section class="card" id="simBox">
+    <h3>SIMULASI WAKTU</h3>
+    <div class="seg2"><button id="m-inst" class="on">Specific Time</button><button id="m-day">24-hour</button></div>
+    <label class="t">WAKTU (00:00 – 23:59 WIB)</label><input type="range" id="jam" min="0" max="1439" value="720">
+    <div class="pp"><button id="play">▶ Play</button><button id="pause">⏸ Pause</button></div>
+  </section>
+
+  <!-- 2. ANALISIS JENDELA WAKTU (terpisah dari simulasi) -->
+  <section class="card" id="winBox">
+    <h3>ANALISIS JENDELA WAKTU (WIB)</h3>
+    <div class="row">Jam <select id="wa"></select> – <select id="wb"></select></div>
+    <div class="row">Interval <select id="wi"></select></div>
+    <button id="m-win" class="wbtn"></button>
+    <div id="prog"><i></i></div>
+
+    <h3 style="margin-top:14px">RINGKASAN ANALISIS ROOFTOP</h3>
+    <div class="stat" id="stat"></div>
+    <h3 style="margin-top:14px">BANGUNAN TERDAMPAK TERTINGGI</h3>
+    <div id="top"></div>
+    <div class="note" id="cav"></div>
+  </section>
+</aside>
+<div id="status">Memuat peta…</div>
+
+<script>
+/* =====================================================================
+   KONFIGURASI  (ubah di sini tanpa menyentuh struktur aplikasi)
+   ===================================================================== */
+const UTC_OFFSET = 7, TZ = 'WIB';                   // WIB = UTC+7
+const PM_BASE = 'https://overturemaps-extras-us-west-2.s3.us-west-2.amazonaws.com/tiles/';   // Overture hanya menyimpan beberapa rilis terakhir -> rilis lama = 404
+const PM_FALLBACK_RELEASES = ['2026-10-21.0', '2026-09-23.1', '2026-09-23.0'];                  // cadangan jika STAC tidak bisa diakses (update tiap bulan)
+const STAC_URL = 'https://stac.overturemaps.org/catalog.json';                                   // field "latest" = rilis terbaru
+let PM_URLS = PM_FALLBACK_RELEASES.map(r => PM_BASE + r + '/buildings.pmtiles');
+const BASEMAP = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';   // existing (tanpa API key). Jika diganti provider berkey: ...?key=YOUR_API_KEY
+const DATA = {
+  poly:  { IND: 'data/Industrial Sector.geojson', KOM: 'data/Commercial Sector.geojson', SOC: 'data/Socio-Government Sector.geojson' },
+  point: { IND: 'data/Titik Sektor Industrial.geojson', KOM: 'data/Titik Sektor Commercial.geojson', SOC: 'data/Titik Sektor Socio-Government.geojson' },
+  agg:   { IND: 'data/Total Sektor Industri.geojson', KOM: 'data/Total Sektor Komersial.geojson', SOC: 'data/Total Sektor Socio-Government.geojson' },
+  exist: 'data/PLTS_Exist.geojson',
+  gi: 'data/Gardu Induk Indonesia.geojson', jar: 'data/Jaringan Listrik Indonesia.geojson', spklu: 'data/SPKLU.geojson'
+};
+/* Simbologi infrastruktur — mengikuti legenda QGIS (warna diambil langsung dari gambar legenda) */
+const JAR_CLS = [   // Jaringan Listrik → field tegjar (kV)
+  { kv: 20,  label: 'SUTM 20 kV',   color: '#a97204', w: 1.0 },
+  { kv: 30,  label: 'SUTM 30 kV',   color: '#04754f', w: 1.0 },
+  { kv: 70,  label: 'SUTT 70 kV',   color: '#ffff04', w: 1.3 },
+  { kv: 150, label: 'SUTT 150 kV',  color: '#58ff04', w: 1.6 },
+  { kv: 275, label: 'SUTET 275 kV', color: '#ffab04', w: 2.0 },
+  { kv: 500, label: 'SUTET 500 kV', color: '#ff04c6', w: 2.5 }];
+const GI_CLS = [    // Gardu Induk → field teggi (dinormalisasi ke kelas terdekat)
+  { kv: 500, label: '500 kV', color: '#ff00c5', s: 1.15 },
+  { kv: 275, label: '275 kV', color: '#d9a60d', s: 1.05 },
+  { kv: 150, label: '150 kV', color: '#4ce600', s: .95 },
+  { kv: 70,  label: '70 kV',  color: '#ffff00', s: .85 },
+  { kv: 30,  label: '30 kV',  color: '#008000', s: .8 },
+  { kv: 25,  label: '25 kV',  color: '#267300', s: .8 }];
+/* teggi di data mentah tidak seragam ("150 KV","150kV","150/20 kV","159 kV","66/20 KV", …) → ambil angka pertama, cocokkan ke kelas terdekat */
+function giKv(t) {
+  const n = parseFloat((String(t == null ? '' : t).match(/\d+(?:[.,]\d+)?/) || [])[0]); if (!isFinite(n)) return null;
+  return GI_CLS.reduce((b, c) => Math.abs(c.kv - n) < Math.abs(b.kv - n) ? c : b).kv;
+}
+const houseSVG = (c, w = 16) => `<svg width="${w}" height="${w}" viewBox="0 0 40 40"><path d="M20 3 37 19H33V36H7V19H3Z" fill="${c}" stroke="#222" stroke-width="2.2" stroke-linejoin="round"/><rect x="26" y="6" width="5" height="9" fill="${c}" stroke="#222" stroke-width="2"/></svg>`;
+function giIcon(color) {                              // ikon rumah (gardu) → ImageData untuk MapLibre
+  const c = document.createElement('canvas'); c.width = c.height = 40; const g = c.getContext('2d');
+  g.lineJoin = 'round'; g.fillStyle = color; g.strokeStyle = 'rgba(25,25,25,.9)'; g.lineWidth = 2.4;
+  g.beginPath(); g.moveTo(20, 3); g.lineTo(37, 19); g.lineTo(33, 19); g.lineTo(33, 36); g.lineTo(7, 36); g.lineTo(7, 19); g.lineTo(3, 19); g.closePath(); g.fill(); g.stroke();
+  g.fillRect(26, 6, 5, 10); g.strokeRect(26, 6, 5, 10); g.fillRect(27, 15, 3, 3);   // cerobong
+  return g.getImageData(0, 0, 40, 40);
+}
+const SECTORS = {
+  IND: { name: 'Industrial',        color: '#e76f51' },
+  KOM: { name: 'Commercial',        color: '#2a9d8f' },
+  SOC: { name: 'Socio-Government',  color: '#4895ef' }
+};
+/* Klasifikasi dampak: batas atas (%) tiap kelas. Kelas 0 = tepat 0%. */
+const IMPACT = [
+  { max: 0,        label: 'Tidak terdampak',        color: '#2ecc71' },
+  { max: 10,       label: 'Dampak rendah (>0–10%)',  color: '#f1c40f' },
+  { max: 25,       label: 'Dampak sedang (>10–25%)', color: '#fb8500' },
+  { max: 50,       label: 'Dampak tinggi (>25–50%)', color: '#e63946' },
+  { max: Infinity, label: 'Dampak sangat tinggi (>50%)', color: '#7b1e3a' }
+];
+const WINDOW_DEF = { start: 10, end: 14, step: 15 };   // jam & interval menit (configurable juga via UI)
+const WINDOW_METRIC = 'union';   // 'union' = % rooftop yang terbayangi minimal sekali di jendela | 'mean' = rata-rata antar langkah | 'max' = puncak
+const AREA_BASIS = 'efektif';    // Shadowed/Unshaded Area = coverage × 'efektif' (Luas Atap Efektif QGIS) | 'polygon' (Luas Atap)
+/* PLTS Eksisting (data/PLTS_Exist.geojson) → dikurangkan dari Total Kapasitas per kab/kota */
+const EXIST_UNIT_DIV = 1000;     // field 'kapasitas' diasumsikan kWp → dibagi 1000 = MWp (samakan dengan satuan Total Kapasitas)
+const EXIST_SNAP_M = 1000;       // titik di tepi pantai/pelabuhan yang jatuh tepat di luar poligon (≤ jarak ini) dimasukkan ke poligon terdekat
+const EXIST_DEDUP = true;        // buang baris ganda (koordinat 4 desimal + kapasitas + nama gedung sama) agar tidak terhitung dua kali
+/* Penentuan kab/kota PLTS eksisting memakai koordinat titik (point-in-polygon terhadap poligon agregasi), atribut provinsi/kabupaten tidak dipakai */
+const SHOW_SUM_ALL_SECTORS = true; // tampilkan penjumlahan tampilan 3 sektor di agregasi (nilai asli tidak diubah)
+const DEFAULT_H = 5, FLOOR_H = 3.2, MIN_CASTER_DIFF = 0.5, MAX_SHADOW_LEN = 200;
+const MAX_BLD = 3500, MIN_ZOOM = 15, SAMPLE_MAX_STEP = 4, SAMPLE_MIN_STEP = 0.5, SAMPLE_TARGET_N = 300;
+const CLIP_INFRA_TO_NTB = true, NTB_BBOX = [115.7, -9.2, 119.4, -8.0];
+const F = { luas: 'Luas Atap', eff: 'Luas Atap Efektif', ghi: 'GHI', cap: 'Capacity', en: 'Energy' };   // nama field asli GeoJSON QGIS
+const AGG_RAMP = ['#fff3c4', '#ffd166', '#f4a261', '#e76f51', '#9d0208'];
+
+/* =====================================================================
+   Helper
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, '0');
+const fmt = m => pad(Math.floor(m / 60)) + ':' + pad(m % 60);
+const status = t => $('status').textContent = t;
+const EMPTY = { type: 'FeatureCollection', features: [] };
+const nf = (v, d = 2) => v == null || v === '' || isNaN(+v) ? '–' : (+v).toLocaleString('id-ID', { maximumFractionDigits: d });
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const clsOf = frac => { if (frac == null) return -1; const p = frac * 100; if (p <= 0) return 0; for (let i = 1; i < IMPACT.length; i++) if (p <= IMPACT[i].max) return i; return IMPACT.length - 1; };
+
+function hull(P) {
+  P = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cr = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+  const lo = [], up = [];
+  for (const p of P) { while (lo.length >= 2 && cr(lo[lo.length-2], lo[lo.length-1], p) <= 0) lo.pop(); lo.push(p); }
+  for (let i = P.length - 1; i >= 0; i--) { const p = P[i]; while (up.length >= 2 && cr(up[up.length-2], up[up.length-1], p) <= 0) up.pop(); up.push(p); }
+  up.pop(); lo.pop(); return lo.concat(up);
+}
+function pip(x, y, pg) {
+  let c = false;
+  for (let i = 0, j = pg.length - 1; i < pg.length; j = i++) {
+    const a = pg[i], b = pg[j];
+    if ((a[1] > y) !== (b[1] > y) && x < (b[0]-a[0])*(y-a[1])/(b[1]-a[1]) + a[0]) c = !c;
+  }
+  return c;
+}
+function area(pg) { let s = 0; for (let i = 0, j = pg.length - 1; i < pg.length; j = i++) s += pg[j][0]*pg[i][1] - pg[i][0]*pg[j][1]; return Math.abs(s) / 2; }
+const bboxOf = pts => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; } return [x0, y0, x1, y1]; };
+const loadJSON = async u => { const r = await fetch(encodeURI(u)); if (!r.ok) throw new Error(u + ' → ' + r.status); return r.json(); };
+const merc2ll = (x, y) => [x / 6378137 * 180 / Math.PI, (2 * Math.atan(Math.exp(y / 6378137)) - Math.PI / 2) * 180 / Math.PI];
+const inBox = (x, y) => x >= NTB_BBOX[0] && x <= NTB_BBOX[2] && y >= NTB_BBOX[1] && y <= NTB_BBOX[3];
+
+/* =====================================================================
+   Init
+   ===================================================================== */
+(async () => {
+  const protocol = new pmtiles.Protocol();
+  maplibregl.addProtocol('pmtiles', protocol.tile);
+  try {                                                // ambil rilis terbaru otomatis dari STAC Overture
+    const cat = await (await fetch(STAC_URL)).json();
+    if (cat.latest) { PM_URLS = [PM_BASE + cat.latest + '/buildings.pmtiles', ...PM_URLS.filter(u => !u.includes('/' + cat.latest + '/'))]; console.info('[Overture] rilis terbaru (STAC):', cat.latest); }
+  } catch (e) { console.warn('[Overture] STAC tidak terjangkau, pakai daftar cadangan:', e && e.message || e); }
+  let pmUrl = null;                                   // null = semua URL gagal (jangan paksa pakai URL pertama)
+  for (const u of PM_URLS) {
+    try {
+      const p = new pmtiles.PMTiles(u); const h = await p.getHeader();
+      protocol.add(p); pmUrl = u;
+      console.info('[Overture] PMTiles OK:', u, '| zoom', h.minZoom + '-' + h.maxZoom);
+      break;
+    } catch (e) { console.warn('[Overture] PMTiles gagal:', u, e && e.message || e); }
+  }
+  if (!pmUrl) console.error('[Overture] Semua URL PMTiles gagal. Cek PM_URLS / koneksi / CORS.');
+
+  const map = new maplibregl.Map({
+    container: 'map', style: BASEMAP,
+    center: [117.0, -8.65], zoom: 7.9, pitch: 0, bearing: 0, maxPitch: 80,
+    canvasContextAttributes: { antialias: true }
+  });
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
+  map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
+
+  /* ----- state ----- */
+  let B = [], bGrid = new Map(), HMAX = 0, truncR = Infinity;
+  let TG = [], TGV = [], RES = new Map(), INST = new Map();
+  let mode = 'inst', timer = null, token = 0;
+  let lng0 = 117, lat0 = -8.6, kx = 1, ky = 110574, pending = true, deb;
+  const CELL = 50, AGG = {}; let aggGeom = null;
+  const active = { IND: true, KOM: true, SOC: true };
+  const infraLoaded = {};
+
+  /* ----- load data (baseline QGIS: nilai TIDAK diubah) ----- */
+  status('Memuat data GeoJSON…');
+  const [polyD, pointD, aggD] = await Promise.all([
+    Promise.all(Object.entries(DATA.poly).map(async ([k, u]) => [k, await loadJSON(u)])),
+    Promise.all(Object.entries(DATA.point).map(async ([k, u]) => [k, await loadJSON(u)])),
+    Promise.all(Object.entries(DATA.agg).map(async ([k, u]) => [k, await loadJSON(u)]))
+  ]);
+  const sectorFC = {}, pointFC = Object.fromEntries(pointD);
+  polyD.forEach(([sec, fc]) => {
+    const feats = [];
+    fc.features.forEach((f, i) => {
+      if (!f.geometry || f.geometry.type !== 'Polygon') return;
+      const ring = f.geometry.coordinates[0], key = sec + '#' + i;
+      let sx = 0, sy = 0; for (let q = 0; q < ring.length - 1; q++) { sx += ring[q][0]; sy += ring[q][1]; }
+      const n = ring.length - 1, t = { key, sec, props: f.properties, ring, cLng: sx / n, cLat: sy / n };
+      TG.push(t);
+      feats.push({ type: 'Feature', properties: { k: key, sector: sec }, geometry: f.geometry });   // geometri & id saja; atribut asli disimpan di TG
+    });
+    sectorFC[sec] = { type: 'FeatureCollection', features: feats };
+  });
+  const TGmap = new Map(TG.map(t => [t.key, t]));
+  aggD.forEach(([sec, fc]) => fc.features.forEach(f => {
+    const n = f.properties.NAME_2; (AGG[n] = AGG[n] || { P: f.properties })[sec] = f.properties;
+    if (sec === 'IND' && !aggGeom) aggGeom = {};
+    if (aggGeom && !aggGeom[n]) aggGeom[n] = f.geometry;
+  }));
+  aggD.forEach(([sec, fc]) => fc.features.forEach(f => { if (!aggGeom[f.properties.NAME_2]) aggGeom[f.properties.NAME_2] = f.geometry; }));
+  if (window.initDashboard) initDashboard({ AGG, aggGeom, map });   // dashboard KPI (css/dashboard.css, js/dashboard.js)
+
+  /* ----- PLTS Eksisting → agregasi per kab/kota ----- */
+  let existD = null; try { existD = await loadJSON(DATA.exist); } catch (e) { status('Data PLTS Eksisting tidak ditemukan: ' + e.message); }
+  const EX = {}; let EXIST_FC = EMPTY, exDup = 0, exUnmatched = 0;
+  const pipGeom = (x, y, g) => (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).some(pc => pip(x, y, pc[0]) && !pc.slice(1).some(h => pip(x, y, h)));
+  function distM(x, y, g) {                            // jarak titik ke batas poligon (meter, pendekatan lokal)
+    const kx = 111320 * Math.cos(y * Math.PI / 180), ky = 110574; let m = Infinity;
+    (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).forEach(pc => pc.forEach(r => {
+      for (let i = 0; i < r.length - 1; i++) {
+        const ax = (r[i][0] - x) * kx, ay = (r[i][1] - y) * ky, dx = (r[i + 1][0] - r[i][0]) * kx, dy = (r[i + 1][1] - r[i][1]) * ky;
+        const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy || 1))); m = Math.min(m, Math.hypot(ax + t * dx, ay + t * dy));
+      }
+    }));
+    return m;
+  }
+  function areaAt(x, y) {                               // kab/kota ditentukan dari KOORDINAT, bukan atribut nama
+    const hit = Object.keys(AGG).find(n => pipGeom(x, y, aggGeom[n])); if (hit) return [hit, 0];
+    let best = null, bd = EXIST_SNAP_M; Object.keys(AGG).forEach(n => { const d = distM(x, y, aggGeom[n]); if (d <= bd) { bd = d; best = n; } });
+    return best ? [best, bd] : [null, 0];
+  }
+  if (existD) {
+    const seen = new Set(), feats = [];
+    existD.features.forEach(f => {
+      const p = f.properties, g = f.geometry; if (!g || !g.coordinates) return;
+      const [x, y] = g.coordinates, kap = +p.kapasitas || 0;
+      if (!inBox(x, y)) return;                                                  // prafilter cepat: hanya titik di sekitar NTB
+      if (EXIST_DEDUP) { const key = [x.toFixed(4), y.toFixed(4), kap, String(p.nama_gedun || '').trim().toLowerCase()].join('|'); if (seen.has(key)) { exDup++; return; } seen.add(key); }
+      const [n, snapD] = areaAt(x, y); if (!n) { exUnmatched++; return; }          // jauh di luar poligon kab/kota NTB → tidak dihitung
+      const e = EX[n] || (EX[n] = { n: 0, kwp: 0 }); e.n++; e.kwp += kap;
+      feats.push({ type: 'Feature', properties: { ...p, area: n, mwp: kap / EXIST_UNIT_DIV, snap: Math.round(snapD) }, geometry: { type: 'Point', coordinates: [x, y] } });
+    });
+    EXIST_FC = { type: 'FeatureCollection', features: feats };
+    console.info(`PLTS Eksisting: ${feats.length} lokasi di NTB, ${exDup} data ganda dibuang, ${exUnmatched} di luar poligon`);
+  }
+  const exMWp = n => (EX[n]?.kwp || 0) / EXIST_UNIT_DIV;                                   // kapasitas terpasang (MWp)
+  const totKap = n => ['IND', 'KOM', 'SOC'].reduce((s, k) => s + (+(AGG[n][k]?.['Total Kapasitas']) || 0), 0);
+  const netKap = n => totKap(n) - exMWp(n);                                                // Potensi Net = Total Kapasitas − terpasang
+
+  /* ----- Agregasi: nilai pilihan untuk koroplet (hanya pembacaan nilai asli) ----- */
+  const aggOpts = [['IND', 'Industrial'], ['KOM', 'Commercial'], ['SOC', 'Socio-Government']];
+  if (SHOW_SUM_ALL_SECTORS) aggOpts.push(['ALL', 'Total 3 sektor (penjumlahan nilai asli)']);
+  aggOpts.forEach(([v, l]) => $('agg-s').add(new Option(l, v)));
+  $('agg-s').value = SHOW_SUM_ALL_SECTORS ? 'ALL' : 'IND';
+  const aggVal = (n, sec, met) => met === 'EXIST' ? exMWp(n) : met === 'NET' ? netKap(n) : sec === 'ALL' ? ['IND', 'KOM', 'SOC'].reduce((s, k) => s + (+(AGG[n][k]?.[met]) || 0), 0) : (+(AGG[n][sec]?.[met]) || 0);
+  function aggFC() {
+    const sec = $('agg-s').value, met = $('agg-m').value;
+    return { type: 'FeatureCollection', features: Object.keys(AGG).map(n => ({ type: 'Feature', geometry: aggGeom[n], properties: { n, val: aggVal(n, sec, met) } })) };
+  }
+  function aggStyle() {
+    const fc = aggFC(), mx = Math.max(...fc.features.map(f => f.properties.val), 0) || 1;
+    const br = [1, 2, 3, 4].map(i => +(mx * i / 5).toPrecision(3));
+    map.getSource('agg').setData(fc);
+    map.setPaintProperty('agg-fill', 'fill-color', ['step', ['get', 'val'], AGG_RAMP[0], br[0], AGG_RAMP[1], br[1], AGG_RAMP[2], br[2], AGG_RAMP[3], br[3], AGG_RAMP[4]]);
+    const met = $('agg-m').value, u = met === 'Total Energi' ? 'MWh' : 'MWp', e = [0, ...br], dg = mx < 1 ? 3 : 2;
+    $('agg-lg').innerHTML = AGG_RAMP.map((c, i) => `<div class="lgd"><i style="background:${c}"></i>${nf(e[i], dg)}${i < 4 ? ' – ' + nf(br[i], dg) : '+'} ${u}</div>`).join('') +
+      (met === 'EXIST' || met === 'NET' ? '<div class="note">Total 3 sektor; tidak mengikuti pilihan sektor. Potensi Net = Total Kapasitas − PLTS eksisting.</div>' : '');
+  }
+
+  /* ----- Panel legenda & layer control ----- */
+  $('imp-lg').innerHTML = IMPACT.map(c => `<div class="lgd"><i style="background:${c.color}"></i>${c.label}</div>`).join('');
+  const GROUPS = [
+    ['A. POTENSI PLTS', [
+      { id: 'agg', label: 'Agregasi Kab/Kota', ly: ['agg-fill', 'agg-line', 'agg-lbl'], on: true },
+      { id: 'IND', label: 'Industrial', ly: ['IND', 'IND-l'], on: true, sec: 'IND' },
+      { id: 'KOM', label: 'Commercial', ly: ['KOM', 'KOM-l'], on: true, sec: 'KOM' },
+      { id: 'SOC', label: 'Socio-Government', ly: ['SOC', 'SOC-l'], on: true, sec: 'SOC' }]],
+    ['B. LOKASI BANGUNAN', [
+      { id: 'pIND', label: 'Industrial Point', ly: ['IND-p'], on: false, sec: 'IND' },
+      { id: 'pKOM', label: 'Commercial Point', ly: ['KOM-p'], on: false, sec: 'KOM' },
+      { id: 'pSOC', label: 'Socio-Government Point', ly: ['SOC-p'], on: false, sec: 'SOC' }]],
+    ['C. 3D BUILDING', [{ id: 'ovt', label: 'Overture 3D Buildings', ly: ['ovt3d'], on: true }]],
+    ['D. INFRASTRUKTUR', [
+      { id: 'gi', label: 'Gardu Induk', ly: ['gi'], on: false, lazy: 'gi', color: '#b5179e', cls: 'gi' },
+      { id: 'jar', label: 'Jaringan Listrik', ly: ['jar-c', 'jar'], on: false, lazy: 'jar', color: '#f77f00', cls: 'jar' },
+      { id: 'plts', label: 'PLTS Eksisting', ly: ['plts'], on: false, color: '#ffb703' },
+      { id: 'spklu', label: 'SPKLU', ly: ['spklu'], on: false, lazy: 'spklu', color: '#06d6a0' }]],
+    ['F. ANALISIS', [
+      { id: 'shd', label: 'Dynamic Shadow', ly: ['shd'], on: true },
+      { id: 'sunp', label: 'Sun Path 3D & Compass', ly: ['sp-line-c', 'sp-line', 'sp-lbl', 'sp-deg'], on: true, color: '#ffb703' }]]
+  ];
+  const clsOn = { gi: new Set(GI_CLS.map(c => c.kv)), jar: new Set(JAR_CLS.map(c => c.kv)) };
+  function clsLegend(it) {                           // legenda bergaya QGIS, tiap kelas bisa di-on/off
+    if (!it.cls) return '';
+    const rows = (it.cls === 'gi' ? GI_CLS : JAR_CLS).map(c => `<label><input type="checkbox" data-cls="${it.cls}" data-kv="${c.kv}" checked>${
+      it.cls === 'gi' ? houseSVG(c.color, 16) : `<svg width="22" height="10"><line x1="1" y1="5" x2="21" y2="5" stroke="${c.color}" stroke-width="3" stroke-linecap="round"/></svg>`}<span>${c.label}</span></label>`).join('');
+    return `<div class="cls-wrap dim" id="cl-${it.cls}">${rows}</div>`;
+  }
+  function applyCls(k) {
+    const f = ['in', ['get', 'kv'], ['literal', [...clsOn[k]]]];
+    (k === 'jar' ? ['jar-c', 'jar'] : ['gi']).forEach(l => map.getLayer(l) && map.setFilter(l, f));
+  }
+  const BM_OPTS = [['map', 'Peta', 'th-map'], ['sat', 'Satellite', 'th-sat']];
+  let BM = 'map';
+  const bmHTML = '<h3>E. BASEMAP</h3><div class="bm">' + BM_OPTS.map(([k, l, c]) => `<label class="bmo"><input type="radio" name="bm" data-bm="${k}" ${k === BM ? 'checked' : ''}><span class="th ${c}"></span><em>${l}</em></label>`).join('') + '</div>';
+  function setBasemap(k) {                          // hanya menyalakan/mematikan layer raster satelit (di bawah semua layer data)
+    BM = k; if (map.getLayer('sat')) map.setLayoutProperty('sat', 'visibility', k === 'sat' ? 'visible' : 'none');
+  }
+  $('lyr').innerHTML = GROUPS.map(([g, items]) => (g.startsWith('F.') ? bmHTML : '') + `<h3>${g}</h3>` + items.map(it =>
+    `<label class="o"><input type="checkbox" data-id="${it.id}" ${it.on ? 'checked' : ''}><i style="background:${it.sec ? SECTORS[it.sec].color : it.color || (it.id === 'agg' ? '#f4a261' : it.id === 'ovt' ? '#8f9db1' : '#08142e')}"></i>${it.label}</label>` + clsLegend(it)).join('')).join('');
+  const ITEMS = Object.fromEntries(GROUPS.flatMap(g => g[1]).map(i => [i.id, i]));
+  $('lyr').insertAdjacentHTML('beforeend', '<div id="spLg" style="margin:4px 0 0 2px"></div>');
+
+  function setVis(it, on) {
+    it.ly.forEach(l => map.getLayer(l) && map.setLayoutProperty(l, 'visibility', on ? 'visible' : 'none'));
+    if (it.id in active) { active[it.id] = on; updateRoofFilter(); }
+  }
+  function updateRoofFilter() {
+    if (map.getLayer('roofcap')) map.setFilter('roofcap', ['in', ['get', 'sector'], ['literal', Object.keys(active).filter(k => active[k])]]);
+  }
+  async function loadInfra(which) {
+    if (infraLoaded[which]) return; infraLoaded[which] = true; status('Memuat ' + ITEMS[which].label + '…');
+    try {
+      const d = await loadJSON(DATA[which]), out = [];
+      for (const f of d.features) {
+        const g = f.geometry; if (!g) continue;
+        if (which === 'spklu') {                                    // sumber EPSG:3857 → WGS84 (hanya reproyeksi geometri)
+          let [x, y] = g.coordinates;
+          if (Math.abs(x) > 180) [x, y] = merc2ll(x, y);
+          if (CLIP_INFRA_TO_NTB && !inBox(x, y)) continue;
+          out.push({ type: 'Feature', properties: f.properties, geometry: { type: 'Point', coordinates: [x, y] } });
+        } else if (which === 'gi') {
+          if (CLIP_INFRA_TO_NTB && !inBox(...g.coordinates)) continue;
+          const kv = giKv(f.properties.teggi); if (kv == null) continue;
+          out.push({ type: 'Feature', properties: { ...f.properties, kv }, geometry: g });
+        } else {
+          const lines = g.type === 'MultiLineString' ? g.coordinates : [g.coordinates];
+          if (CLIP_INFRA_TO_NTB && !lines.some(l => l.some(p => inBox(p[0], p[1])))) continue;
+          out.push({ type: 'Feature', properties: { ...f.properties, kv: +f.properties.tegjar }, geometry: g });
+        }
+      }
+      map.getSource(which).setData({ type: 'FeatureCollection', features: out });
+      status(ITEMS[which].label + ': ' + out.length + ' objek' + (CLIP_INFRA_TO_NTB ? ' (area NTB)' : ''));
+    } catch (e) { status('Gagal memuat ' + ITEMS[which].label + ': ' + e.message); infraLoaded[which] = false; }
+  }
+  $('lyr').addEventListener('change', e => {
+    const d = e.target.dataset;
+    if (d.bm) return setBasemap(d.bm);
+    if (d.cls) { const set = clsOn[d.cls]; e.target.checked ? set.add(+d.kv) : set.delete(+d.kv); return applyCls(d.cls); }
+    const it = ITEMS[d.id]; if (!it) return;
+    if (it.lazy && e.target.checked) loadInfra(it.lazy);
+    if (it.cls) $('cl-' + it.cls).classList.toggle('dim', !e.target.checked);
+    setVis(it, e.target.checked);
+  });
+
+  /* =====================================================================
+     Sumber & layer peta
+     ===================================================================== */
+  map.on('load', async () => {
+    const lbl = map.getStyle().layers.find(l => l.type === 'symbol')?.id;
+    // basemap Satellite (Esri World Imagery): di atas fill/garis basemap, di bawah semua layer data & label
+    map.addSource('sat', { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' });
+    map.addLayer({ id: 'sat', type: 'raster', source: 'sat', layout: { visibility: BM === 'sat' ? 'visible' : 'none' } }, lbl);
+    map.addSource('dem', { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], encoding: 'terrarium', tileSize: 256, maxzoom: 15, attribution: 'Terrain: Mapzen/AWS' });
+    if (pmUrl) map.addSource('ovt', { type: 'vector', url: 'pmtiles://' + pmUrl, attribution: '© Overture Maps Foundation' });
+    ['shd', 'bld', 'roofcap', 'agg', 'gi', 'jar', 'spklu'].forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY }));
+    map.addSource('plts', { type: 'geojson', data: EXIST_FC });
+    Object.keys(SECTORS).forEach(k => {
+      map.addSource(k, { type: 'geojson', data: sectorFC[k] });
+      map.addSource(k + '-p', { type: 'geojson', data: pointFC[k] });
+    });
+
+    // icon SPKLU dari images/SPKLU.jpg
+    try {
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = 'images/SPKLU.jpg'; });
+      const c = document.createElement('canvas'); c.width = c.height = 36; const g = c.getContext('2d');
+      g.beginPath(); g.arc(18, 18, 17, 0, 7); g.clip(); g.drawImage(img, 0, 0, 36, 36);
+      map.addImage('spklu-ic', g.getImageData(0, 0, 36, 36));
+    } catch (e) {}
+
+    try {                                                // ikon PLTS eksisting dari images/PLTS.png (diberi latar putih agar terbaca)
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = 'images/PLTS.png'; });
+      const c = document.createElement('canvas'); c.width = 96; c.height = 64; const g = c.getContext('2d');
+      g.fillStyle = 'rgba(255,255,255,.96)'; g.strokeStyle = '#ffb703'; g.lineWidth = 4; g.beginPath(); g.roundRect(3, 3, 90, 58, 12); g.fill(); g.stroke();
+      const w = 68, h = w * img.naturalHeight / img.naturalWidth; g.drawImage(img, (96 - w) / 2, (64 - h) / 2, w, h);
+      map.addImage('plts-ic', g.getImageData(0, 0, 96, 64), { pixelRatio: 3 });
+    } catch (e) {}
+    GI_CLS.forEach(c => map.addImage('gi-' + c.kv, giIcon(c.color), { pixelRatio: 2 }));   // ikon rumah per tegangan
+    map.addLayer({ id: 'hs', type: 'hillshade', source: 'dem', paint: { 'hillshade-shadow-color': '#0b1d3a', 'hillshade-highlight-color': '#fff3c4', 'hillshade-accent-color': '#3b4a63', 'hillshade-exaggeration': .5 } }, lbl);
+    if (map.getSource('ovt')) map.addLayer({ id: 'ovt-hit', type: 'fill', source: 'ovt', 'source-layer': 'building', paint: { 'fill-opacity': 0 } }, lbl);
+    // A. agregasi
+    map.addLayer({ id: 'agg-fill', type: 'fill', source: 'agg', paint: { 'fill-color': AGG_RAMP[0], 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 9, .65, 13, .12] } }, lbl);
+    map.addLayer({ id: 'agg-line', type: 'line', source: 'agg', paint: { 'line-color': '#7a4a1d', 'line-width': 1.2, 'line-opacity': .8 } }, lbl);
+    map.addLayer({ id: 'agg-lbl', type: 'symbol', source: 'agg', maxzoom: 11, layout: { 'text-field': ['get', 'n'], 'text-size': 11, 'text-font': ['Noto Sans Regular'] }, paint: { 'text-color': '#3b2a1a', 'text-halo-color': '#fff', 'text-halo-width': 1.2 } });
+    // D. infrastruktur (garis & gardu & spklu)
+    map.addLayer({ id: 'jar-c', type: 'line', source: 'jar', layout: { visibility: 'none', 'line-sort-key': ['get', 'kv'] }, paint: { 'line-color': '#1b2330', 'line-opacity': .45,
+      'line-width': ['interpolate', ['linear'], ['zoom'], 6, ['match', ['get', 'kv'], 20, 1.6, 30, 1.6, 70, 2.08, 150, 2.56, 275, 3.2, 500, 4.0, 1], 14, ['match', ['get', 'kv'], 20, 3.4, 30, 3.4, 70, 4.42, 150, 5.44, 275, 6.8, 500, 8.5, 1]] } });   // casing tipis agar garis kuning tetap terbaca di basemap terang
+    map.addLayer({ id: 'jar', type: 'line', source: 'jar', layout: { visibility: 'none', 'line-sort-key': ['get', 'kv'], 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['match', ['get', 'kv'], 20, '#a97204', 30, '#04754f', 70, '#ffff04', 150, '#58ff04', 275, '#ffab04', 500, '#ff04c6', '#999'],
+      'line-width': ['interpolate', ['linear'], ['zoom'], 6, ['match', ['get', 'kv'], 20, 0.7, 30, 0.7, 70, 0.91, 150, 1.12, 275, 1.4, 500, 1.75, 1], 14, ['match', ['get', 'kv'], 20, 2.2, 30, 2.2, 70, 2.86, 150, 3.52, 275, 4.4, 500, 5.5, 1]] } });
+    map.addLayer({ id: 'gi', type: 'symbol', source: 'gi', layout: { visibility: 'none', 'icon-image': ['concat', 'gi-', ['to-string', ['get', 'kv']]], 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-sort-key': ['get', 'kv'],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 6, ['match', ['get', 'kv'], 500, 0.57, 275, 0.53, 150, 0.47, 70, 0.42, 30, 0.4, 25, 0.4, .8], 14, ['match', ['get', 'kv'], 500, 1.15, 275, 1.05, 150, 0.95, 70, 0.85, 30, 0.8, 25, 0.8, .8]] } });
+    map.addLayer(map.hasImage('spklu-ic')
+      ? { id: 'spklu', type: 'symbol', source: 'spklu', layout: { visibility: 'none', 'icon-image': 'spklu-ic', 'icon-size': ['interpolate', ['linear'], ['zoom'], 6, .45, 14, .8], 'icon-allow-overlap': true } }
+      : { id: 'spklu', type: 'circle', source: 'spklu', layout: { visibility: 'none' }, paint: { 'circle-color': '#06d6a0', 'circle-radius': 5, 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } });
+    // A. polygon target rooftop per sektor (baseline QGIS)
+    Object.entries(SECTORS).forEach(([k, s]) => {
+      map.addLayer({ id: k, type: 'fill', source: k, paint: { 'fill-color': s.color, 'fill-opacity': .6 } });
+      map.addLayer({ id: k + '-l', type: 'line', source: k, paint: { 'line-color': s.color, 'line-width': ['interpolate', ['linear'], ['zoom'], 9, .3, 17, 1.4] } });
+    });
+    // E. dynamic shadow di tanah
+    map.addLayer({ id: 'shd', type: 'fill', source: 'shd', paint: { 'fill-color': '#08142e', 'fill-opacity': +$('opa').value } });
+    // C. Overture 3D
+    map.addLayer({ id: 'ovt3d', type: 'fill-extrusion', source: 'bld', paint: {
+      'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'h'], 0, '#d4dae3', 10, '#b3bdcb', 30, '#8896ab', 80, '#5b6a82'],
+      'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0, 'fill-extrusion-opacity': .92 } });
+    // tutup atap target (muncul di atas bangunan 3D, diwarnai kelas dampak)
+    map.addLayer({ id: 'roofcap', type: 'fill-extrusion', source: 'roofcap', paint: {
+      'fill-extrusion-color': ['get', 'col'], 'fill-extrusion-base': ['get', 'rh'], 'fill-extrusion-height': ['+', ['get', 'rh'], .6], 'fill-extrusion-opacity': 1 } });
+    // B. titik lokasi bangunan
+    Object.entries(SECTORS).forEach(([k, s]) => map.addLayer({ id: k + '-p', type: 'circle', source: k + '-p', layout: { visibility: 'none' },
+      paint: { 'circle-color': s.color, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 2, 16, 6], 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } }));
+    map.addLayer(map.hasImage('plts-ic')                  // di atas semua layer agar tidak tertutup poligon/3D
+      ? { id: 'plts', type: 'symbol', source: 'plts', layout: { visibility: 'none', 'icon-image': 'plts-ic', 'icon-allow-overlap': true, 'icon-size': ['interpolate', ['linear'], ['zoom'], 6, .55, 14, 1] } }
+      : { id: 'plts', type: 'circle', source: 'plts', layout: { visibility: 'none' }, paint: { 'circle-color': '#ffb703', 'circle-radius': 6, 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } });
+    map.setTerrain({ source: 'dem', exaggeration: 1.2 });
+    updateRoofFilter(); aggStyle();
+    spInit(); drawSP();
+    document.querySelector('#lyr [data-id="sunp"]').addEventListener('change', () => setTimeout(() => { spKey = ''; drawSP(); }, 0));
+    map.on('moveend', drawSP);
+
+    /* ----- klik / popup ----- */
+    const ORDER = ['plts', 'IND-p', 'KOM-p', 'SOC-p', 'roofcap', 'IND', 'KOM', 'SOC', 'spklu', 'gi', 'jar', 'agg-fill'];
+    map.on('click', e => {
+      const bb = [[e.point.x - 5, e.point.y - 5], [e.point.x + 5, e.point.y + 5]];
+      for (const l of ORDER) {
+        if (!map.getLayer(l) || map.getLayoutProperty(l, 'visibility') === 'none') continue;
+        const fs = map.queryRenderedFeatures(bb, { layers: [l] }); if (!fs.length) continue;
+        const f = fs[0], p = f.properties;
+        if (l === 'roofcap' || SECTORS[l]) return popupTarget(p.k, e.lngLat);
+        if (l === 'agg-fill') return popupAgg(p.n, e.lngLat);
+        if (l === 'plts') return popupPLTS(p, e.lngLat);
+        if (l === 'gi') return popupGI(p, e.lngLat);
+        if (l === 'jar') return popupJar(p, e.lngLat);
+        const t = l.endsWith('-p') ? 'Titik ' + SECTORS[l.slice(0, 3)].name : ITEMS[l].label;
+        return popupGeneric(t, p, e.lngLat);
+      }
+    });
+    ORDER.forEach(l => { map.on('mouseenter', l, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', l, () => map.getCanvas().style.cursor = ''); });
+
+    pending = true; status('Zoom in (≥ ' + MIN_ZOOM + ') ke area bangunan untuk analisis bayangan'); upd();
+  });
+
+  /* =====================================================================
+     Sun Path (gaya ShadowMap) + Compass — pusat = titik tengah peta (area analisis)
+     - busur kuning = lintasan matahari tanggal terpilih (kubah 3D, diproyeksikan ke layar tiap frame)
+     - bola bercahaya = posisi matahari pada waktu terpilih; lencana = terbit / terbenam
+     - cincin compass + derajat di tanah (layer peta, tertutup bangunan 3D)
+     ===================================================================== */
+  const D2R = Math.PI / 180;
+  let spKey = '', SP = null, spOv = null, spE = {};
+  const spSunAt = (lat, lng, ymd, min) => {
+    const p = SunCalc.getPosition(new Date(Date.UTC(ymd[0], ymd[1] - 1, ymd[2], 0, min) - UTC_OFFSET * 36e5), lat, lng);
+    return { alt: p.altitude, A: (p.azimuth + Math.PI) % (2 * Math.PI) };
+  };
+  function spInit() {
+    ['sp-ground', 'sp-lbl'].forEach(id => map.addSource(id, { type: 'geojson', data: EMPTY }));
+    map.addLayer({ id: 'sp-line-c', type: 'line', source: 'sp-ground', paint: { 'line-color': '#fff', 'line-width': ['+', ['get', 'w'], 4], 'line-opacity': .55 } }, 'ovt3d');
+    map.addLayer({ id: 'sp-line', type: 'line', source: 'sp-ground', paint: { 'line-color': '#3c4656', 'line-width': ['get', 'w'], 'line-opacity': .85 } }, 'ovt3d');
+    const T = { 'text-font': ['Noto Sans Regular'], 'text-allow-overlap': true, 'text-ignore-placement': true, 'text-field': ['get', 'txt'] };
+    map.addLayer({ id: 'sp-lbl', type: 'symbol', source: 'sp-lbl', filter: ['==', ['get', 'k'], 'c'], layout: { ...T, 'text-size': 22 },
+      paint: { 'text-color': ['get', 'col'], 'text-halo-color': '#fff', 'text-halo-width': 2.5 } });
+    map.addLayer({ id: 'sp-deg', type: 'symbol', source: 'sp-lbl', filter: ['==', ['get', 'k'], 'd'],
+      layout: { ...T, 'text-size': 11, 'text-rotation-alignment': 'map', 'text-pitch-alignment': 'map', 'text-rotate': ['get', 'rot'] },
+      paint: { 'text-color': '#2b3340', 'text-halo-color': '#fff', 'text-halo-width': 2 } });
+    // overlay layar: busur, sinar, lencana
+    spOv = document.createElement('div'); spOv.id = 'spOv'; spOv.style.display = 'none';
+    spOv.innerHTML = '<svg><defs><filter id="spGl" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>' +
+      '<polyline id="spRay" fill="none" stroke="#ffe45c" stroke-width="11" stroke-opacity=".42" stroke-linecap="round"/>' +
+      '<polyline id="spRay2" fill="none" stroke="#fff3a0" stroke-width="2.5" stroke-opacity=".95" stroke-linecap="round"/>' +
+      '<polyline id="spArc" fill="none" stroke="#ffe45c" stroke-width="2.4" filter="url(#spGl)"/>' +
+      '<polyline id="spWin" fill="none" stroke="#ff7a00" stroke-width="4.5" stroke-linecap="round" filter="url(#spGl)"/></svg>' +
+      '<div class="spb rs" id="spRise"></div><div class="spb rs" id="spSet"></div><div class="spb sun" id="spSun"></div>';
+    map.getContainer().appendChild(spOv);
+    ['spRay', 'spRay2', 'spArc', 'spWin', 'spRise', 'spSet', 'spSun'].forEach(k => spE[k] = spOv.querySelector('#' + k));
+    // layer custom kosong: hanya untuk mendapat matriks proyeksi kamera tiap frame (sinkron dengan peta saat geser/rotasi/zoom)
+    map.addLayer({ id: 'sp-proj', type: 'custom', renderingMode: '3d', onAdd() {}, render(gl, args) { spProject(args && args.defaultProjectionData ? args.defaultProjectionData.mainMatrix : args); } });
+  }
+  function spProject(M) {
+    if (!SP || !M || !spOv || spOv.style.display === 'none') return;
+    const cv = map.getCanvas(), W = cv.clientWidth, H = cv.clientHeight;
+    const z0 = (map.queryTerrainElevation && map.queryTerrainElevation(SP.c)) || 0;
+    const mc = maplibregl.MercatorCoordinate.fromLngLat(SP.c, z0), sc = mc.meterInMercatorCoordinateUnits();
+    const P = (x, y, z) => {
+      const mx = mc.x + x * sc, my = mc.y - y * sc, mz = mc.z + z * sc, w = M[3] * mx + M[7] * my + M[11] * mz + M[15];
+      if (!(w > 0)) return null;
+      return [(M[0] * mx + M[4] * my + M[8] * mz + M[12]) / w * .5 * W + W / 2, H / 2 - (M[1] * mx + M[5] * my + M[9] * mz + M[13]) / w * .5 * H];
+    };
+    const pl = pts => pts.map(p => P(p[0], p[1], p[2])).filter(Boolean).map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ');
+    const put = (el, p, html) => { if (!p) { el.style.display = 'none'; return; } el.style.display = 'flex'; el.style.left = p[0] + 'px'; el.style.top = p[1] + 'px'; if (html) el.innerHTML = html; };
+    spE.spArc.setAttribute('points', pl(SP.arc));
+    spE.spWin.setAttribute('points', pl(SP.win));
+    put(spE.spRise, P(...SP.rise.p), SP.rise.html); put(spE.spSet, P(...SP.set.p), SP.set.html);
+    if (SP.sun) {
+      const [x, y, z] = SP.sun.p, ray = pl([[0, 0, 0], [x * 1.22, y * 1.22, z * 1.22]]);
+      spE.spRay.setAttribute('points', ray); spE.spRay2.setAttribute('points', ray);
+      put(spE.spSun, P(x, y, z), SP.sun.html);
+    } else { spE.spRay.setAttribute('points', ''); spE.spRay2.setAttribute('points', ''); spE.spSun.style.display = 'none'; }
+  }
+  function spClear() { ['sp-ground', 'sp-lbl'].forEach(id => map.getSource(id) && map.getSource(id).setData(EMPTY)); spKey = ''; SP = null; if ($('spLg')) $('spLg').innerHTML = ''; }
+  function drawSP() {
+    const chk = document.querySelector('#lyr [data-id="sunp"]');
+    if (!map.getSource('sp-ground') || !chk) return;
+    const z = map.getZoom();
+    if (!chk.checked || z < 13) { spOv.style.display = 'none'; SP = null; if (z < 13) spClear(); return; }
+    spOv.style.display = 'block';
+    const c = map.getCenter(), cv = map.getCanvas(), cosl = Math.cos(c.lat * D2R), kx_ = 111320 * cosl, ky_ = 110574;
+    const zq = Math.round(z * 2) / 2, mpp = 78271.5 * cosl / Math.pow(2, zq);
+    const R = Math.min(2500, Math.max(40, .42 * Math.min(cv.clientWidth, cv.clientHeight) * mpp));   // radius mengikuti zoom (dikuantisasi agar tidak melompat)
+    const ymd = $('tgl').value.split('-').map(Number);
+    const key = [$('tgl').value, c.lng.toFixed(5), c.lat.toFixed(5), Math.round(R), mode === 'win' ? WIN.a + '-' + WIN.b : 'x'].join('|');
+    const sph = (alt, A) => [R * Math.cos(alt) * Math.sin(A), R * Math.cos(alt) * Math.cos(A), R * Math.sin(alt)];
+
+    if (key !== spKey || !SP) {
+      spKey = key;
+      const toLL = (x, y) => [c.lng + x / kx_, c.lat + y / ky_], pt = (r, a) => [r * Math.sin(a), r * Math.cos(a)];
+      const circ = (r, n = 120) => Array.from({ length: n + 1 }, (_, i) => toLL(...pt(r, i / n * 2 * Math.PI)));
+      const line = (cs, w) => ({ type: 'Feature', properties: { w }, geometry: { type: 'LineString', coordinates: cs } });
+      const g = [line(circ(R), 2.4), line(circ(.93 * R), 1)];
+      for (let d = 0; d < 360; d += 10) { const a = d * D2R, mj = d % 30 === 0; g.push(line([toLL(...pt(R * (mj ? .88 : .93), a)), toLL(...pt(R, a))], mj ? 1.8 : 1)); }
+      const lb = [];
+      ['N', 'E', 'S', 'W'].forEach((n, i) => lb.push({ type: 'Feature', properties: { k: 'c', txt: n, col: i ? '#1b2330' : '#e63946' }, geometry: { type: 'Point', coordinates: toLL(...pt(R * 1.15, i * 90 * D2R)) } }));
+      for (let d = 30; d < 360; d += 30) if (d % 90) lb.push({ type: 'Feature', properties: { k: 'd', txt: String(d), rot: d > 90 && d < 270 ? d + 180 : d }, geometry: { type: 'Point', coordinates: toLL(...pt(R * 1.06, d * D2R)) } });
+      map.getSource('sp-ground').setData({ type: 'FeatureCollection', features: g });
+      map.getSource('sp-lbl').setData({ type: 'FeatureCollection', features: lb });
+
+      // busur lintasan hari ini (tiap 2 menit), jendela analisis ditandai terpisah
+      const arc = [], win = []; let rise = null, set = null, mx = 0, rA = 0, sA = 0;
+      for (let m = 0; m < 1440; m += 2) {
+        const s = spSunAt(c.lat, c.lng, ymd, m); if (s.alt <= 0) continue;
+        if (rise === null) { rise = m; rA = s.A; } set = m; sA = s.A; mx = Math.max(mx, s.alt);
+        const p = sph(s.alt, s.A); arc.push(p);
+        if (mode === 'win' && m >= WIN.a * 60 && m <= WIN.b * 60) win.push(p);
+      }
+      if (rise !== null) { arc.unshift([...pt(R, rA), 0]); arc.push([...pt(R, sA), 0]); }
+      const mk = (m, A, t) => ({ p: [...pt(R, A), 0], html: `<b>${fmt(m)}</b><small>${t}</small>` });
+      SP = { c: [c.lng, c.lat], arc, win, sun: null, rise: rise === null ? { p: [0, 0, -1e6], html: '' } : mk(rise, rA, 'terbit'), set: set === null ? { p: [0, 0, -1e6], html: '' } : mk(set, sA, 'terbenam') };
+      $('spLg').innerHTML = rise === null ? '<div class="note">Matahari tidak terbit pada tanggal ini.</div>' :
+        `<div class="lgd"><i style="background:#ffe45c"></i>Sun path ${$('tgl').value}: ${fmt(rise)}–${fmt(set)} ${TZ} · maks ${(mx / D2R).toFixed(1)}°</div><div class="note">Kubah radius ${Math.round(R)} m berpusat di tengah peta${mode === 'win' ? '; oranye = jendela analisis' : ''}.</div>`;
+    }
+    const min = mode === 'win' ? Math.round((WIN.a + WIN.b) / 2 * 60) : +$('jam').value, s = spSunAt(c.lat, c.lng, ymd, min);
+    SP.sun = s.alt > 0.01 ? { p: sph(s.alt, s.A), html: `<b>${fmt(min)}</b><small>${TZ}</small>` } : null;
+    map.triggerRepaint();
+  }
+
+  /* ----- Popup ----- */
+  const popup = new maplibregl.Popup({ maxWidth: 'none', className: 'pp', offset: 14, closeOnMove: false, focusAfterOpen: false });
+  function fitPopup() {                              // geser peta agar popup utuh & tidak tertutup panel samping
+    const el = popup.getElement(); if (!el) return;
+    const c = el.querySelector('.maplibregl-popup-content').getBoundingClientRect(), mp = map.getContainer().getBoundingClientRect(), M = 14;
+    let L = mp.left + M, Rr = mp.right - M, T = mp.top + M, Bm = mp.bottom - M - 34;
+    for (const id of ['kiri', 'kanan']) {
+      const p = $(id); if (!p || p.classList.contains('hide')) continue; const r = p.getBoundingClientRect();
+      if (id === 'kiri') L = Math.max(L, r.right + M); else Rr = Math.min(Rr, r.left - M);
+    }
+    if (Rr - L < c.width) { L = mp.left + M; Rr = mp.right - M; }
+    let dx = 0, dy = 0;
+    if (c.left < L) dx = c.left - L; else if (c.right > Rr) dx = c.right - Rr;
+    if (c.top < T) dy = c.top - T; else if (c.bottom > Bm) dy = c.bottom - Bm;
+    if (dx || dy) map.panBy([dx, dy], { duration: 350 });
+  }
+  const show = (ll, html) => { popup.setLngLat(ll).setHTML('<div class="pop">' + html + '</div>').addTo(map); requestAnimationFrame(() => requestAnimationFrame(fitPopup)); };
+  const clean = v => (v == null || String(v).trim() === '' || String(v).trim() === '-' || String(v).toUpperCase() === 'N/A' || v === 'null') ? null : v;
+  const R = (k, v, o = {}) => clean(v) == null ? '' : `<div class="r${o.blk ? ' blk' : ''}"><span>${esc(k)}</span><b>${o.raw ? v : esc(v)}</b></div>`;
+  const head = (icon, title, sub) => `<div class="hd"><div class="ic">${icon}</div><div style="min-width:0"><h4>${esc(title)}</h4>${sub ? `<div class="sb">${sub}</div>` : ''}</div></div>`;
+  const sec = t => `<div class="sec">${t}</div>`;
+  const kpi = a => `<div class="kpi">${a.map(([l, v, u]) => `<div><small>${l}</small><b>${v}<em>${u || ''}</em></b></div>`).join('')}</div>`;
+  const pill = (t, c) => `<span class="pill"><i style="background:${c}"></i>${esc(t)}</span>`;
+
+  function popupGeneric(title, p, ll) {
+    const rows = Object.entries(p).filter(([k, v]) => clean(v) != null).map(([k, v]) => R(k, v)).join('');
+    show(ll, head('<img src="images/building.png" alt="">', title) + rows);
+  }
+  function popupPLTS(p, ll) {
+    const kwp = +p.kapasitas || 0, lok = [p.desa, p.kecamatan, p.kabupaten, p.provinsi].filter(x => clean(x) != null).join(', ');
+    show(ll, head('<img src="images/PLTS.png" alt="" style="width:24px;height:auto">', clean(p.nama_gedun) || 'PLTS Eksisting', pill('PLTS Eksisting', '#ffb703') + (clean(p.tahun) ? pill(Math.round(p.tahun), '#8fa3bb') : '')) +
+      kpi([['KAPASITAS TERPASANG', nf(kwp, 2), 'kWp'], ['SETARA', nf(kwp / EXIST_UNIT_DIV, 4), 'MWp']]) +
+      R('Kab/Kota (berdasarkan koordinat)', p.area) + R('Paket', p.nama_paket, { blk: 1 }) + R('Lokasi', lok, { blk: 1 }));
+  }
+  function popupGI(p, ll) {
+    const c = GI_CLS.find(x => x.kv === p.kv) || GI_CLS[0], k = +p.kapgi;
+    const kap = !(k > 0) ? null : (k >= 1e5 ? k / 1e6 : k);                 // sebagian data bernilai VA (mis. 6000000) → MVA
+    show(ll, head(houseSVG(c.color, 26), p.namobj || 'Gardu Induk', pill(c.label, c.color) + (clean(p.statopr) ? pill(p.statopr, '#8fa3bb') : '')) +
+      kpi([['KAPASITAS', kap != null ? nf(kap, kap % 1 ? 1 : 0) : '–', kap != null ? 'MVA' : ''], ['TAHUN OPERASI', clean(p.thnopr) || '–', '']]) +
+      R('Tegangan (data asli)', p.teggi) + R('Kepemilikan', p.statmlk) + R('Regional PLN', p.regpln) +
+      R('Keterangan', p.remark) + R('Alamat', p.alamat, { blk: 1 }));
+  }
+  function popupJar(p, ll) {
+    const c = JAR_CLS.find(x => x.kv === p.kv) || JAR_CLS[0], jenis = p.kv >= 275 ? 'SUTET' : p.kv >= 70 ? 'SUTT' : 'SUTM', len = +p.pjgjar;
+    show(ll, head(`<svg width="24" height="10"><line x1="1" y1="5" x2="23" y2="5" stroke="${c.color}" stroke-width="4" stroke-linecap="round"/></svg>`, p.namobj || 'Jaringan Listrik', pill(jenis + ' ' + p.kv + ' kV', c.color)) +
+      kpi([['TEGANGAN', p.kv, 'kV'], ['PANJANG', len > 0 ? nf(len, 2) : '–', len > 0 ? 'km' : '']]) +
+      R('Status Operasi', p.statopr) + R('Kepemilikan', p.statmlk) + R('Regional PLN', p.regpln) + R('Keterangan', p.remark));
+  }
+  function popupAgg(n, ll) {
+    const a = AGG[n]; if (!a) return; const P = a.IND || a.KOM || a.SOC;
+    const secRows = ['IND', 'KOM', 'SOC'].map(k => { const q = a[k]; return q ? sec(SECTORS[k].name.toUpperCase()) +
+      R('Jumlah Objek', nf(q['Jumlah Objek'], 0)) + R('Luas Atap Efektif', nf(q['Total Luas Atap Efektif']) + ' m²') + R('GHI', nf(q['GHI'], 3)) +
+      R('Kapasitas', nf(q['Total Kapasitas'], 3) + ' MWp') + R('Energi', nf(q['Total Energi']) + ' MWh') : ''; }).join('');
+    let sum = '';
+    if (SHOW_SUM_ALL_SECTORS) { const S = m => ['IND', 'KOM', 'SOC'].reduce((s, k) => s + (+(a[k]?.[m]) || 0), 0);
+      sum = kpi([['TOTAL KAPASITAS', nf(S('Total Kapasitas'), 3), 'MWp'], ['TOTAL ENERGI', nf(S('Total Energi')), 'MWh']]) +
+        R('Total Objek', nf(S('Jumlah Objek'), 0)) + R('Total Luas Atap Efektif', nf(S('Total Luas Atap Efektif')) + ' m²') +
+        kpi([['TERPASANG (EKSISTING)', nf(exMWp(n), 3), 'MWp'], ['POTENSI NET', nf(netKap(n), 3), 'MWp']]) +
+        R('Jumlah PLTS Eksisting', nf(EX[n]?.n || 0, 0) + ' lokasi') +
+        `<div class="nt">Total = penjumlahan nilai asli 3 sektor. Potensi Net = Total Kapasitas − PLTS Eksisting (kWp ÷ ${EXIST_UNIT_DIV} = MWp).${netKap(n) < 0 ? ' Terpasang melebihi potensi hasil QGIS.' : ''}</div>`; }
+    show(ll, head('<img src="images/kapasitas.png" alt="">', ((P.TYPE_2 || '') + ' ' + n).trim(), esc(P.NAME_1 || '')) + sum + secRows +
+      `<div class="nt">Nilai langsung dari GeoJSON agregasi (tidak dihitung ulang).</div>`);
+  }
+  function popupTarget(k, ll) {
+    const t = TGmap.get(k); if (!t) return; const p = t.props, sc = SECTORS[t.sec];
+    const r = RES.get(k), i = INST.get(k), win = `${pad(WIN.a)}:00–${pad(WIN.b)}:00 ${TZ}`;
+    let an;
+    if (!r) an = `<div class="nt">Belum dianalisis. Zoom ≥ ${MIN_ZOOM} ke area ini (bangunan Overture dimuat per tampilan peta).</div>`;
+    else {
+      const frac = r[WMK[WINDOW_METRIC]], base = AREA_BASIS === 'efektif' ? +p[F.eff] : +p[F.luas], sh = frac * base, c = IMPACT[clsOf(frac)];
+      an = `<div class="r"><span>Shadow Coverage</span><b>${nf(frac * 100, 1)} %</b></div><div class="bar"><i style="width:${Math.min(100, frac * 100)}%;background:${c.color}"></i></div>` +
+        R('Impact Classification', `<span class="pill" style="margin:0"><i style="background:${c.color}"></i>${c.label}</span>`, { raw: 1 }) +
+        R('Shadowed Area', nf(sh) + ' m²') + R('Unshaded Area', nf(base - sh) + ' m²') + R('Analysis Window', win) +
+        `<div class="nt">Metrik: ${WINDOW_METRIC === 'union' ? 'area terbayangi minimal sekali' : WINDOW_METRIC === 'mean' ? 'rata-rata' : 'puncak'} · rata-rata ${nf(r.m * 100, 1)}% · puncak ${nf(r.x * 100, 1)}% · interval ${WIN.s} mnt · basis luas: ${AREA_BASIS === 'efektif' ? 'Luas Atap Efektif' : 'Luas Atap'}</div>` +
+        (mode !== 'win' && i != null ? `<div class="nt">Pada ${fmt(+$('jam').value)} ${TZ}: ${nf(i * 100, 1)}% (${IMPACT[clsOf(i)].label})</div>` : '');
+    }
+    show(ll, head('<img src="images/roof.png" alt="">', p.name || p.id || '–', pill(sc.name, sc.color)) +
+      kpi([['KAPASITAS', nf(p[F.cap], 3), 'MWp'], ['ENERGI', nf(p[F.en]), 'MWh']]) +
+      R('Building ID', p.id || '–') + R('Nama', p.name) + R(`Luas Bangunan`, nf(p[F.luas]) + ' m²') + R('Luas Atap Efektif', nf(p[F.eff]) + ' m²') + R('GHI', nf(p[F.ghi], 3)) +
+      sec('SOLAR SHADOW ANALYSIS') + an + `<div class="nt">Baseline QGIS tidak diubah oleh analisis bayangan.</div>`);
+  }
+
+  /* =====================================================================
+     Overture: bangunan sebagai konteks 3D + shadow caster
+     ===================================================================== */
+  function refresh() {
+    if (!map.getSource('ovt')) return;
+    if (map.getZoom() < MIN_ZOOM) { clearBuildings(); status('Zoom in (≥ ' + MIN_ZOOM + ') untuk memuat bangunan Overture & analisis bayangan'); return; }
+    const c = map.getCenter(), bd = map.getBounds();
+    lng0 = c.lng; lat0 = c.lat; kx = 111320 * Math.cos(lat0 * Math.PI / 180);
+    const raw = map.querySourceFeatures('ovt', { sourceLayer: 'building' });
+    if (!raw.length) return;
+    const padX = (bd.getEast() - bd.getWest()) * .25, padY = (bd.getNorth() - bd.getSouth()) * .25;
+    const seen = new Set(), list = [];
+    for (const f of raw) {
+      const g = f.geometry, polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      for (const pc of polys) {
+        let ring = pc[0].slice(0, -1); if (ring.length < 3) continue;
+        const [x, y] = ring[0];
+        if (x < bd.getWest() - padX || x > bd.getEast() + padX || y < bd.getSouth() - padY || y > bd.getNorth() + padY) continue;
+        const key = (f.properties.id || f.id || '') + '|' + x.toFixed(6) + ',' + y.toFixed(6);
+        if (seen.has(key)) continue; seen.add(key);
+        let pts = ring.map(q => [(q[0] - lng0) * kx, (q[1] - lat0) * ky]), ar = 0;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) ar += pts[j][0]*pts[i][1] - pts[i][0]*pts[j][1];
+        if (Math.abs(ar) / 2 < 4) continue;
+        if (ar < 0) { ring.reverse(); pts.reverse(); }
+        const p = f.properties, hReal = +p.height || (+p.num_floors ? +p.num_floors * FLOOR_H : 0);
+        const cx = pts.reduce((s, q) => s + q[0], 0) / pts.length, cy = pts.reduce((s, q) => s + q[1], 0) / pts.length;
+        list.push({ ring, pts, h: hReal || DEFAULT_H, hasH: !!hReal, cx, cy, bb: bboxOf(pts), area: Math.abs(ar) / 2, d: cx*cx + cy*cy });
+      }
+    }
+    list.sort((a, b) => a.d - b.d);
+    const trunc = list.length > MAX_BLD; B = list.slice(0, MAX_BLD); truncR = trunc ? Math.sqrt(B[B.length - 1].d) : Infinity;
+    bGrid = new Map(); HMAX = 0;
+    B.forEach((b, i) => {
+      b.i = i; if (b.h > HMAX) HMAX = b.h;
+      const k = Math.floor(b.cx / CELL) + ',' + Math.floor(b.cy / CELL); (bGrid.get(k) || bGrid.set(k, []).get(k)).push(i);
+    });
+    map.getSource('bld').setData({ type: 'FeatureCollection', features: B.map(b => ({ type: 'Feature', properties: { h: b.h, hasH: b.hasH }, geometry: { type: 'Polygon', coordinates: [b.ring.concat([b.ring[0]])] } })) });
+    prepTargets(bd); pending = false; deb = null;
+    status(B.length + ' bangunan Overture · ' + TGV.length + ' rooftop target di tampilan'); render(); runWindow();
+  }
+  function clearBuildings() {
+    B = []; TGV = []; RES = new Map(); INST = new Map(); token++;
+    ['bld', 'roofcap', 'shd'].forEach(s => map.getSource(s).setData(EMPTY)); renderSummary(); setProg(0);
+  }
+  map.on('moveend', () => { pending = true; clearTimeout(deb); deb = setTimeout(refresh, 400); });
+  map.on('sourcedata', e => { if (e.sourceId === 'ovt' && e.isSourceLoaded && pending) { clearTimeout(deb); deb = setTimeout(refresh, 300); } });
+  map.on('error', e => { if (e.sourceId === 'ovt') { console.error('[Overture] source error:', e.error || e); status('Gagal memuat PMTiles Overture – cek koneksi / URL rilis'); } });
+  if (!pmUrl) status('Gagal memuat PMTiles Overture – semua URL rilis tidak bisa diakses');
+
+  /* =====================================================================
+     Target rooftop (polygon QGIS) → koordinat lokal, titik sampel, tinggi atap
+     ===================================================================== */
+  function prepTargets(bd) {
+    TGV = []; RES = new Map(); INST = new Map();
+    for (const t of TG) {
+      if (t.cLng < bd.getWest() || t.cLng > bd.getEast() || t.cLat < bd.getSouth() || t.cLat > bd.getNorth()) continue;
+      const pts = t.ring.slice(0, -1).map(q => [(q[0] - lng0) * kx, (q[1] - lat0) * ky]);
+      t.pts = pts; t.cx = (t.cLng - lng0) * kx; t.cy = (t.cLat - lat0) * ky; t.bb = bboxOf(pts);
+      if (Math.hypot(t.cx, t.cy) > truncR) continue;                        // di luar cakupan caster yang dimuat
+      t.area = area(pts); if (t.area < 1) continue;
+      // bangunan Overture yang sama dengan target (host) tidak dihitung sebagai caster
+      t.excl = new Set(); let host = null;
+      const cx0 = Math.floor((t.bb[0] - 30) / CELL), cx1 = Math.floor((t.bb[2] + 30) / CELL), cy0 = Math.floor((t.bb[1] - 30) / CELL), cy1 = Math.floor((t.bb[3] + 30) / CELL);
+      for (let gx = cx0; gx <= cx1; gx++) for (let gy = cy0; gy <= cy1; gy++) for (const j of (bGrid.get(gx + ',' + gy) || [])) {
+        const b = B[j];
+        if (b.bb[2] < t.bb[0] || b.bb[0] > t.bb[2] || b.bb[3] < t.bb[1] || b.bb[1] > t.bb[3]) continue;
+        if (pip(t.cx, t.cy, b.pts) || pip(b.cx, b.cy, t.pts)) { t.excl.add(j); if (!host || b.h > host.h) host = b; }
+      }
+      const hp = +t.props.height;
+      t.rh = hp > 0 ? hp : host ? host.h : DEFAULT_H;
+      // titik sampel di dalam polygon target
+      const stp = Math.min(SAMPLE_MAX_STEP, Math.max(SAMPLE_MIN_STEP, Math.sqrt(t.area / SAMPLE_TARGET_N))), sm = [];
+      for (let x = t.bb[0] + stp / 2; x < t.bb[2]; x += stp) for (let y = t.bb[1] + stp / 2; y < t.bb[3]; y += stp) if (pip(x, y, pts)) sm.push([x, y]);
+      if (!sm.length) sm.push([t.cx, t.cy]);
+      t.sm = sm; TGV.push(t);
+    }
+  }
+
+  /* =====================================================================
+     Solar position engine (SunCalc) – WIB UTC+7
+     ===================================================================== */
+  function sunAt(min) {
+    const [y, m, d] = $('tgl').value.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d, 0, min) - UTC_OFFSET * 36e5);
+    const p = SunCalc.getPosition(dt, lat0, lng0), alt = p.altitude;
+    const A = (p.azimuth + Math.PI) % (2 * Math.PI);                     // azimut dari utara, searah jarum jam
+    return { alt, A, sx: Math.sin(A), sy: Math.cos(A), sa: Math.sin(alt), up: alt > .02, tan: Math.tan(alt) };
+  }
+
+  /* =====================================================================
+     Shadow simulation: bayangan caster (footprint ∪ footprint digeser h/tan(elevasi))
+     ===================================================================== */
+  function shadowSet(s) {          // bayangan di permukaan tanah (layer Dynamic Shadow)
+    if (!s.up) return [];
+    return B.map(b => {
+      const L = Math.min(b.h / s.tan, MAX_SHADOW_LEN);
+      return hull(b.pts.concat(b.pts.map(p => [p[0] - s.sx * L, p[1] - s.sy * L])));
+    });
+  }
+  const ll = (x, y) => [x / kx + lng0, y / ky + lat0];
+  const shadowFeats = sets => { const f = []; sets.forEach(S => S.forEach(hl => { const r = hl.map(p => ll(p[0], p[1])); r.push(r[0]); f.push({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [r] } }); })); return f; };
+
+  /* ----- Rooftop shadow intersection (sampling pada polygon target × bayangan caster pada bidang atap) ----- */
+  function analyze(t, suns) {
+    const ns = t.sm.length, ever = new Uint8Array(ns), hit = new Uint8Array(ns); let tot = 0, mx = 0, n = 0;
+    for (const s of suns) {
+      n++; if (!s.up || HMAX <= t.rh + MIN_CASTER_DIFF) continue;
+      hit.fill(0);
+      const R = Math.min(MAX_SHADOW_LEN, (HMAX - t.rh) / s.tan) + 40;
+      const gx0 = Math.floor((t.cx - R) / CELL), gx1 = Math.floor((t.cx + R) / CELL), gy0 = Math.floor((t.cy - R) / CELL), gy1 = Math.floor((t.cy + R) / CELL);
+      for (let gx = gx0; gx <= gx1; gx++) for (let gy = gy0; gy <= gy1; gy++) for (const j of (bGrid.get(gx + ',' + gy) || [])) {
+        const b = B[j]; if (b.h <= t.rh + MIN_CASTER_DIFF || t.excl.has(j)) continue;
+        const L = Math.min((b.h - t.rh) / s.tan, MAX_SHADOW_LEN), dx = -s.sx * L, dy = -s.sy * L;
+        const x0 = Math.min(b.bb[0], b.bb[0] + dx), x1 = Math.max(b.bb[2], b.bb[2] + dx), y0 = Math.min(b.bb[1], b.bb[1] + dy), y1 = Math.max(b.bb[3], b.bb[3] + dy);
+        if (x1 < t.bb[0] || x0 > t.bb[2] || y1 < t.bb[1] || y0 > t.bb[3]) continue;
+        const hl = hull(b.pts.concat(b.pts.map(p => [p[0] + dx, p[1] + dy])));
+        for (let q = 0; q < ns; q++) if (!hit[q] && t.sm[q][0] >= x0 && t.sm[q][0] <= x1 && t.sm[q][1] >= y0 && t.sm[q][1] <= y1 && pip(t.sm[q][0], t.sm[q][1], hl)) hit[q] = 1;
+      }
+      let c = 0; for (let q = 0; q < ns; q++) { if (hit[q]) { c++; ever[q] = 1; } }
+      tot += c / ns; if (c / ns > mx) mx = c / ns;
+    }
+    let u = 0; for (let q = 0; q < ns; q++) u += ever[q];
+    return { u: u / ns, m: n ? tot / n : 0, x: mx };
+  }
+  const WMK = { union: 'u', mean: 'm', max: 'x' };
+
+  /* ----- Analisis jendela 10:00–14:00 (async, bertahap) ----- */
+  const WIN = { a: WINDOW_DEF.start, b: WINDOW_DEF.end, s: WINDOW_DEF.step };
+  const setProg = f => $('prog').firstElementChild.style.width = (f * 100) + '%';
+  function runWindow() {
+    const my = ++token; RES = new Map();
+    const suns = []; for (let m = WIN.a * 60; m <= WIN.b * 60; m += WIN.s) suns.push(sunAt(m));
+    let i = 0; const N = TGV.length;
+    (function chunk() {
+      if (my !== token) return;
+      const end = Math.min(N, i + 25);
+      for (; i < end; i++) RES.set(TGV[i].key, analyze(TGV[i], suns));
+      setProg(N ? i / N : 1);
+      if (i < N) { status(`Analisis bayangan ${WIN.a}:00–${WIN.b}:00 ${TZ}… ${i}/${N}`); setTimeout(chunk, 0); }
+      else { status(`${N} rooftop dianalisis (${suns.length} langkah waktu)`); updateRoofs(); renderSummary(); setTimeout(() => setProg(0), 800); }
+    })();
+  }
+
+  /* ----- warna atap target & ringkasan ----- */
+  function updateRoofs() {
+    const src = mode === 'win' ? (k => RES.get(k) ? RES.get(k)[WMK[WINDOW_METRIC]] : null) : (k => INST.has(k) ? INST.get(k) : null);
+    const feats = TGV.map(t => { const fr = src(t.key), c = clsOf(fr);
+      return { type: 'Feature', properties: { k: t.key, sector: t.sec, rh: t.rh, col: c < 0 ? SECTORS[t.sec].color : IMPACT[c].color }, geometry: { type: 'Polygon', coordinates: [t.ring] } }; });
+    map.getSource('roofcap').setData({ type: 'FeatureCollection', features: feats });
+  }
+  function renderSummary() {
+    const cnt = IMPACT.map(() => 0); let n = 0; const rows = [];
+    TGV.forEach(t => { const r = RES.get(t.key); if (!r) return; n++; const fr = r[WMK[WINDOW_METRIC]], c = clsOf(fr); cnt[c]++; if (fr > 0) rows.push([t, fr, c]); });
+    $('stat').innerHTML = n ? `<div><span>Rooftop dianalisis</span><span>${n}</span></div>` +
+      IMPACT.map((c, i) => `<div><span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;background:${c.color}"></i>${c.label.split(' (')[0]}</span><span>${cnt[i]}</span></div>`).join('') :
+      `<div><span>Belum ada rooftop</span><span>–</span></div>`;
+    rows.sort((a, b) => b[1] - a[1]);
+    $('top').innerHTML = rows.slice(0, 8).map(([t, fr, c]) => `<div data-k="${t.key}"><span>${esc(t.props.name || t.props.id)} <small style="color:${SECTORS[t.sec].color}">${SECTORS[t.sec].name}</small></span><b style="color:${IMPACT[c].color}">${nf(fr * 100, 1)}%</b></div>`).join('') ||
+      `<div style="cursor:default;color:var(--mu)">${n ? 'Tidak ada rooftop terdampak' : '–'}</div>`;
+    const withH = B.length ? Math.round(100 * B.filter(b => b.hasH).length / B.length) : 0;
+    $('cav').textContent = B.length ? `Caster Overture: ${B.length} bangunan, ${withH}% punya data tinggi (sisanya default ${DEFAULT_H} m). Bayangan hanya dari bangunan Overture; pohon/terrain tidak dihitung. Hasil sebagai indikator keterdampakan area, bukan pengurangan MWp/MWh.` : 'Zoom ke area bangunan (≥ ' + MIN_ZOOM + ') untuk memulai analisis.';
+  }
+  $('top').addEventListener('click', e => {
+    const d = e.target.closest('[data-k]'); if (!d) return; const t = TGmap.get(d.dataset.k);
+    map.flyTo({ center: [t.cLng, t.cLat], zoom: Math.max(map.getZoom(), 17.5), pitch: 60, duration: 1500 });
+    map.once('moveend', () => popupTarget(t.key, [t.cLng, t.cLat]));
+  });
+
+  /* =====================================================================
+     Render per mode
+     ===================================================================== */
+  function sunInfo(s) { const deg = x => (x * 180 / Math.PI).toFixed(1) + '°'; $('v-az').textContent = s.up ? deg(s.A) : '–'; $('v-el').textContent = (s.alt * 180 / Math.PI).toFixed(1) + '°'; }
+  function applyEnv(s) {
+    map.getCanvas().style.filter = `brightness(${(.55 + .45 * Math.min(1, Math.max(0, s.alt / .3))).toFixed(2)})`;
+    if (map.getLayer('hs')) {
+      map.setPaintProperty('hs', 'hillshade-illumination-direction', s.A * 180 / Math.PI);
+      map.setPaintProperty('hs', 'hillshade-exaggeration', s.up ? Math.min(1, .25 + .75 * (1 - s.sa)) : 0);
+    }
+  }
+  function applyInst(min) {
+    const s = sunAt(min); sunInfo(s); applyEnv(s);
+    $('sun').textContent = s.up ? `${mode === 'day' ? '24-hour Simulation' : 'Specific Time'} · ${$('tgl').value}` : 'Matahari di bawah horizon';
+    map.setPaintProperty('shd', 'fill-opacity', +$('opa').value);
+    if (!B.length) return;
+    map.getSource('shd').setData({ type: 'FeatureCollection', features: shadowFeats([shadowSet(s)]) });
+    INST = new Map(); TGV.forEach(t => INST.set(t.key, s.up ? analyze(t, [s]).u : null));
+    updateRoofs();
+  }
+  function applyWin() {
+    const mid = Math.round((WIN.a + WIN.b) / 2 * 60), ms = [WIN.a * 60, mid, WIN.b * 60], ss = ms.map(sunAt), s = sunAt(mid);
+    sunInfo(s); applyEnv(s);
+    $('sun').textContent = `Analisis ${pad(WIN.a)}:00–${pad(WIN.b)}:00 ${TZ} · interval ${WIN.s} mnt · bayangan awal/tengah/akhir`;
+    map.setPaintProperty('shd', 'fill-opacity', +$('opa').value * .55);
+    if (B.length) map.getSource('shd').setData({ type: 'FeatureCollection', features: shadowFeats(ss.map(shadowSet)) });
+    updateRoofs();
+  }
+  function render() { mode === 'win' ? applyWin() : applyInst(+$('jam').value); drawSP(); }
+  function upd() { $('wkt').innerHTML = (mode === 'win' ? pad(WIN.a) + '–' + pad(WIN.b) + ':00' : fmt(+$('jam').value)) + `<small>${TZ}</small>`; if (map.getSource('bld')) render(); }
+
+  /* =====================================================================
+     UI
+     ===================================================================== */
+  const w = new Date(Date.now() + UTC_OFFSET * 36e5);
+  $('tgl').value = w.getUTCFullYear() + '-' + pad(w.getUTCMonth() + 1) + '-' + pad(w.getUTCDate());
+  for (let h = 5; h <= 19; h++) ['wa', 'wb'].forEach(id => $(id).add(new Option(pad(h) + '.00', h)));
+  [5, 10, 15, 30].forEach(v => $('wi').add(new Option(v + ' menit', v)));
+  $('wa').value = WIN.a; $('wb').value = WIN.b; $('wi').value = WIN.s;
+  const winLabel = () => mode === 'win' ? `✓ Analisis ${pad(WIN.a)}.00–${pad(WIN.b)}.00 ${TZ} aktif · klik untuk kembali` : `▶ Tampilkan analisis ${pad(WIN.a)}.00–${pad(WIN.b)}.00 ${TZ}`;
+  function setMode(m) {
+    mode = m; if (m !== 'day') stop();
+    ['inst', 'day'].forEach(k => $('m-' + k).classList.toggle('on', k === m));      // tombol simulasi
+    $('m-win').classList.toggle('on', m === 'win'); $('m-win').textContent = winLabel();
+    $('simBox').classList.toggle('dim', m === 'win'); $('winBox').classList.toggle('act', m === 'win');
+    upd();
+  }
+  $('m-inst').onclick = () => setMode('inst'); $('m-day').onclick = () => setMode('day');
+  $('m-win').onclick = () => setMode(mode === 'win' ? 'inst' : 'win');
+  $('m-win').textContent = winLabel();
+  const winChange = () => {
+    const a = +$('wa').value, b = +$('wb').value; if (b <= a) { status('Jam akhir harus > jam awal'); return; }
+    WIN.a = a; WIN.b = b; WIN.s = +$('wi').value; $('m-win').textContent = winLabel();
+    if (B.length) runWindow(); upd();
+  };
+  ['wa', 'wb', 'wi'].forEach(id => $(id).onchange = winChange);
+  $('jam').oninput = () => { if (mode === 'win') setMode('inst'); upd(); };
+  $('tgl').onchange = () => { if (B.length) runWindow(); upd(); };
+  $('opa').oninput = () => { if (map.getLayer('shd')) map.setPaintProperty('shd', 'fill-opacity', +$('opa').value * (mode === 'win' ? .55 : 1)); };
+  $('c-ter').onchange = e => { map.setTerrain(e.target.checked ? { source: 'dem', exaggeration: 1.2 } : null); map.setLayoutProperty('hs', 'visibility', e.target.checked ? 'visible' : 'none'); };
+  $('agg-s').onchange = $('agg-m').onchange = aggStyle;
+  $('lok').onchange = e => { const [x, y, z, p] = e.target.value.split(',').map(Number); map.flyTo({ center: [x, y], zoom: z, pitch: p, duration: 2500 }); };
+
+  function stop() { if (timer) { clearInterval(timer); timer = null; $('play').textContent = '▶ Play'; } }
+  $('pause').onclick = stop;
+  $('play').onclick = () => {
+    if (timer) return;
+    setMode('day'); $('play').textContent = '▶ Playing…';
+    timer = setInterval(() => { $('jam').value = (+$('jam').value + 10) % 1440; upd(); }, 160);
+  };
+})();
+</script>
+<script>
+(() => { const p = document.getElementById('kanan'), b = document.getElementById('bkKanan');
+  const set = h => { p.classList.toggle('hide', h); b.style.display = h ? 'flex' : 'none'; };
+  document.getElementById('tutupKanan').onclick = () => set(true); b.onclick = () => set(false); })();
+</script>
+</body>
+</html>
